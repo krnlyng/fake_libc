@@ -20,6 +20,11 @@ libc.so:
 
 this requires ld.so to have no checks for hardfp / softfp mismatches
 
+# COMPILE
+compile test.so using the android build system
+compile libc.so using sb2 make
+compile test_fake_libc using sb2 make
+
 # WHY?
 
 to remove the need for the android linker in hybris implementations (i still
