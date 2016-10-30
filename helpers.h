@@ -3,6 +3,8 @@
 
 #include <sys/types.h>
 
+#define SOFTFP __attribute__((pcs("aapcs")))
+
 typedef off_t bionic_fpos_t;
 
 struct __sbuf {

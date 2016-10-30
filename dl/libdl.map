@@ -1,0 +1,8 @@
+LIBC {
+    global:
+        dlopen;
+        dlsym;
+        dladdr;
+        dlclose;
+};
+

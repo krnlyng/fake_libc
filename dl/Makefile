@@ -1,6 +1,6 @@
-OUT         := libc.so
-SRC         := fake_libc.c \
-				dummy.c
+OUT         := libdl.so
+SRC         := dl.c#\
+#				glibcdl.c
 
 OBJ         := $(patsubst %.c, %.o, $(filter %.c, $(SRC)))
 OBJ         += $(patsubst %.cpp, %.o, $(filter %.cpp, $(SRC)))
@@ -8,7 +8,7 @@ DEP         := $(OBJ:.o=.d)
 
 CFLAGS      := -Wall -std=c99 -mhard-float -fPIC
 CXXFLAGS    := -Wall -Werror -std=c++0x -mhard-float -fPIC
-LDFLAGS     := -shared -Wl,--version-script=libc.map
+LDFLAGS     := -shared -Wl,--version-script=libdl.map
 LDLIBS      := -ldl
 
 DEBUG       ?= 0
