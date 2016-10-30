@@ -20,6 +20,12 @@ libc.so:
 
 this requires ld.so to have no checks for hardfp / softfp mismatches
 
+## test_vibrator
+there is also an example which loads libhardware_legacy.so and initiates the
+vibrator. It requires one additional quirk (until i patch glibc or figure out
+another way) and that is to use relocation_packer from bionic/tools to modify
+libc++.so.
+
 # COMPILE
 compile test.so using the android build system
 compile libc.so using sb2 make
