@@ -9,7 +9,7 @@ DEP         := $(OBJ:.o=.d)
 CFLAGS      := -Wall -std=c99 -mhard-float -fPIC
 CXXFLAGS    := -Wall -Werror -std=c++0x -mhard-float -fPIC
 LDFLAGS     := -shared -Wl,--version-script=libdl.map
-LDLIBS      := -ldl
+LDLIBS      := -ldl -l:libc.so
 
 DEBUG       ?= 0
 VERBOSE     ?= 0

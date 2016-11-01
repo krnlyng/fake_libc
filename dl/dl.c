@@ -1,18 +1,44 @@
+#include <stdio.h>
+#include <unistd.h>
+#include <link.h>
+
+static void *(*glibc_dlmopen)(int id, const char *filename, int flags);
+static void *(*glibc_dlsym)(void *handle, const char *symbol);
+static int *(*glibc_dladdr)(void *addr, void *info);
+static char *(*glibc_dlerror)(void);
+static int (*glibc_dlclose)(void *handle);
+static int (*glibc_dl_iterate_phdr)(int (*callback) (void *info, size_t size, void *data), void *data);
+
+// initialized from main program which knows which id the android libraries have.
+int android_namespace_id;
+
+void init_dlfunctions(void *op, void *sym, void *addr, void *err, void *clo, void *it)
+{
+    glibc_dlmopen = op;
+    glibc_dlsym = sym;
+    glibc_dladdr = addr;
+    glibc_dlerror = err;
+    glibc_dlclose = clo;
+    glibc_dl_iterate_phdr = it;
+}
+
 __asm__ (".symver dlopen, dlopen@LIBC");
 __asm__ (".symver dladdr, dladdr@LIBC");
 __asm__ (".symver dlsym, dlsym@LIBC");
 __asm__ (".symver dlerror, dlerror@LIBC");
 __asm__ (".symver dlclose, dlclose@LIBC");
 
-__asm__ (".symver glibc_dlopen, dlopen@GLIBC_2.4");
-__asm__ (".symver glibc_dladdr, dladdr@GLIBC_2.4");
-__asm__ (".symver glibc_dlsym, dlsym@GLIBC_2.4");
-__asm__ (".symver glibc_dlerror, dlerror@GLIBC_2.4");
-__asm__ (".symver glibc_dlclose, dlclose@GLIBC_2.4");
-
 void *dlopen(const char *filename, int flags)
 {
-    return glibc_dlopen(filename, flags);
+    if(flags == 0) flags = 1;
+
+    // dlmopen crashes when file does not exist?
+    if(access(filename, F_OK))
+    {
+        return NULL;
+    }
+
+    return glibc_dlmopen(android_namespace_id, filename, flags);
 }
 
 void *dlsym(void *handle, const char *symbol)
@@ -33,5 +59,11 @@ char *dlerror(void)
 int dlclose(void *handle)
 {
     return glibc_dlclose(handle);
+}
+
+// TODO
+int dl_iterate_phdr(int (*callback) (void *info, size_t size, void *data), void *data)
+{
+    return glibc_dl_iterate_phdr(callback, data);
 }
 

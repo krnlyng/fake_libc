@@ -1,9 +1,12 @@
 OUT         := libc.so
 SRC         := fake_libc.c \
-				dummy.c
+				dummy.c \
+				strlcpy.c \
+				strlcat.c
 
 OBJ         := $(patsubst %.c, %.o, $(filter %.c, $(SRC)))
 OBJ         += $(patsubst %.cpp, %.o, $(filter %.cpp, $(SRC)))
+OBJ         += $(patsubst %.s, %.o, $(filter %.s, $(SRC)))
 DEP         := $(OBJ:.o=.d)
 
 CFLAGS      := -Wall -std=c99 -mhard-float -fPIC
@@ -41,6 +44,10 @@ clean:
 $(OUT): $(OBJ)
 	$(MSG) -e "\tLINK\t$@"
 	$(CMD)$(CC) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+%.o: %.s
+	$(MSG) -e "\tAS\t$@"
+	$(CMD)$(AS) -c $< -o $@
 
 %.o: %.c %.d
 	$(MSG) -e "\tCC\t$@"

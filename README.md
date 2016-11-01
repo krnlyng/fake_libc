@@ -26,6 +26,9 @@ vibrator. It requires one additional quirk (until i patch glibc or figure out
 another way) and that is to use relocation_packer from bionic/tools to modify
 libc++.so.
 
+## test_sensors
+Same as above, modified libc++.so. test taken from libhybris.
+
 # COMPILE
 compile test.so using the android build system
 compile libc.so using sb2 make
