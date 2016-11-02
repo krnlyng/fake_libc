@@ -10,10 +10,11 @@ static int (*glibc_dlclose)(void *handle);
 static int (*glibc_dl_iterate_phdr)(int (*callback) (void *info, size_t size, void *data), void *data);
 
 // initialized from main program which knows which id the android libraries have.
-int android_namespace_id;
+static int android_dl_namespace_id;
 
-void init_dlfunctions(void *op, void *sym, void *addr, void *err, void *clo, void *it)
+void init_dlfunctions(int a_dl_ns_id, void *op, void *sym, void *addr, void *err, void *clo, void *it)
 {
+    android_dl_namespace_id = a_dl_ns_id;
     glibc_dlmopen = op;
     glibc_dlsym = sym;
     glibc_dladdr = addr;
@@ -38,7 +39,7 @@ void *dlopen(const char *filename, int flags)
         return NULL;
     }
 
-    return glibc_dlmopen(android_namespace_id, filename, flags);
+    return glibc_dlmopen(android_dl_namespace_id, filename, flags);
 }
 
 void *dlsym(void *handle, const char *symbol)

@@ -550,14 +550,16 @@ BIONIC_FILE *stdin = &__sF[0];
 BIONIC_FILE *stdout = &__sF[1];
 BIONIC_FILE *stderr = &__sF[2];
 
-void **glibc_stdin = NULL;
-void **glibc_stdout = NULL;
-void **glibc_stderr = NULL;
+static void **glibc_stdin = NULL;
+static void **glibc_stdout = NULL;
+static void **glibc_stderr = NULL;
+
+int android_dl_namespace_id = 0;
 
 #define LOAD_GLIBC() \
     if(glibc_handle == NULL) \
     { \
-        glibc_handle = dlmopen(1, "/lib/libc.so.6", RTLD_LAZY); \
+        glibc_handle = dlmopen(android_dl_namespace_id, "/lib/libc.so.6", RTLD_LAZY); \
     }
 
 #define LOAD_GLIBC_SYMBOL(f) \
@@ -576,7 +578,7 @@ void **glibc_stderr = NULL;
 #define LOAD_RT() \
     if(rt_handle == NULL) \
     { \
-        rt_handle = dlmopen(1, "/lib/librt.so.1", RTLD_LAZY); \
+        rt_handle = dlmopen(android_dl_namespace_id, "/lib/librt.so.1", RTLD_LAZY); \
     }
 
 #define LOAD_RT_SYMBOL(f) \
@@ -592,20 +594,23 @@ void **glibc_stderr = NULL;
     glibc_fprintf(*glibc_stderr, "%s is at %p\n", #f, rt_ ##f)
 #endif
 
-void (*init_dlfunctions)(void *op, void *sym, void *addr, void *err, void *clo, void *it);
+static void (*init_dlfunctions)(int a_dl_ns_id, void *op, void *sym, void *addr, void *err, void *clo, void *it);
 
 // provide dlopen and friends for fake libdl.so
-void __attribute__ ((constructor)) default_constructor()
+void init_dl(int a_dl_ns_id) __attribute__((visibility("default")));
+void init_dl(int a_dl_ns_id)
 {
-    int id = 0;
-    void *libdl = dlmopen(1, "libdl.so", RTLD_LAZY);
+    android_dl_namespace_id = a_dl_ns_id;
+
+    void *libdl = dlmopen(android_dl_namespace_id, "libdl.so", RTLD_LAZY);
     init_dlfunctions = dlsym(libdl, "init_dlfunctions");
-    init_dlfunctions(dlmopen, dlsym, dladdr, dlerror, dlclose, dl_iterate_phdr);
+
+    init_dlfunctions(android_dl_namespace_id, dlmopen, dlsym, dladdr, dlerror, dlclose, dl_iterate_phdr);
 
     LOAD_GLIBC_SYMBOL(syscall);
 }
 
-void *_get_actual_fp(BIONIC_FILE *fp)
+static void *_get_actual_fp(BIONIC_FILE *fp)
 {
     LOAD_GLIBC_SYMBOL(stdin);
     LOAD_GLIBC_SYMBOL(stdout);
