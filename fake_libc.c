@@ -3,16 +3,55 @@
 #include <link.h>
 #include <dlfcn.h>
 #include <stdarg.h>
-#include <assert.h>
 #include <errno.h>
 #include <stdint.h>
 #include <linux/posix_types.h>
 #include <sys/uio.h>
-
-#define NULL ((void*) 0)
+#include <sys/types.h>
 
 // be careful with printfs. or any other calls. those will propably call other
 // functions in here.
+
+typedef off_t bionic_fpos_t;
+
+struct __sbuf {
+	unsigned char *_base;
+	int	_size;
+};
+
+typedef struct __sFILE {
+    unsigned char *_p;  /* current position in (some) buffer */
+    int _r;     /* read space left for getc() */
+    int _w;     /* write space left for putc() */
+    short   _flags;     /* flags, below; this FILE is free if 0 */
+    short   _file;      /* fileno, if Unix descriptor, else -1 */
+    struct  __sbuf _bf; /* the buffer (at least 1 byte, if !NULL) */
+    int _lbfsize;   /* 0 or -_bf._size, for inline putc */
+
+    /* operations */
+    void    *_cookie;   /* cookie passed to io functions */
+    int (*_close)(void *);
+    int (*_read)(void *, char *, int);
+    bionic_fpos_t  (*_seek)(void *, bionic_fpos_t, int);
+    int (*_write)(void *, const char *, int);
+
+    /* extension data, to avoid further ABI breakage */
+    struct  __sbuf _ext;
+    /* data for long sequences of ungetc() */
+    unsigned char *_up; /* saved _p when _p is doing ungetc data */
+    int _ur;        /* saved _r when _r is counting ungetc data */
+
+    /* tricks to meet minimum requirements even when malloc() fails */
+    unsigned char _ubuf[3]; /* guarantee an ungetc() buffer */
+    unsigned char _nbuf[1]; /* guarantee a getc() buffer */
+
+    /* separate buffer for fgetln() when line crosses buffer boundary */
+    struct  __sbuf _lb; /* buffer for fgetln() */
+
+    /* Unix stdio files get aligned to block boundaries on fseek() */
+    int _blksize;   /* stat.st_blksize (may be != _bf._size) */
+    bionic_fpos_t  _offset;    /* current lseek offset */
+} BIONIC_FILE;
 
 typedef long unsigned int* _Unwind_Ptr;
 typedef __WCHAR_TYPE__ wchar_t;
@@ -26,8 +65,13 @@ typedef struct {
 
 typedef long wctype_t;
 
-static void *glibc_handle = NULL;
-static void *rt_handle = NULL;
+void *glibc_handle = NULL;
+void *rt_handle = NULL;
+void *gcc_handle = NULL;
+void *pthread_handle = NULL;
+
+void *setjmp_handle = NULL;
+
 static int (*glibc_vfprintf)(void *fp, const char *fmt, va_list ap) = NULL;
 static int (*glibc_fprintf)(void *stream, const char *format, ...) = NULL;
 static _Unwind_Ptr (*glibc___gnu_Unwind_Find_exidx)(_Unwind_Ptr pc, int *pcount) = NULL;
@@ -43,10 +87,10 @@ static int (*glibc_fputs)(const char *s, void *stream) = NULL;
 static int (*glibc_fputc)(int c, void *stream) = NULL;
 static int (*glibc_vasprintf)(char **strp, const char *fmt, va_list ap) = NULL;
 //static int (*glibc_asprintf)(char **strp, const char *fmt, ...) = NULL;
-static void *(*glibc_malloc)(size_t size) = NULL;
-static void (*glibc_free)(void *ptr) = NULL;
+void *(*glibc_malloc)(size_t size) = NULL;
+void (*glibc_free)(void *ptr) = NULL;
 static void *(*glibc_realloc)(void *ptr, size_t size) = NULL;
-static void *(*glibc_memcpy)(void *a, void *b, size_t s) = NULL;
+void *(*glibc_memcpy)(void *a, void *b, size_t s) = NULL;
 static void (*glibc___aeabi_memcpy)(void *dest, const void *src, size_t n) = NULL;
 static void (*glibc___stack_chk_fail)(void) = NULL;
 static void *(*glibc___aeabi_memmove)(void *dest, const void *src, size_t n) = NULL;
@@ -77,10 +121,11 @@ static int (*glibc_isxdigit_l)(int, void*) = NULL;
 static int (*glibc_isascii_l)(int, void*) = NULL;
 static int (*glibc___vsnprintf_chk)(char* dest, size_t supplied_size, int flags, size_t dest_len_from_compiler, const char* format, ...) = NULL;
 static void *(*glibc_calloc)(size_t nmemb, size_t size) = NULL;
-static int (*glibc_pthread_setspecific)(unsigned int key, const void *value) = NULL;
+static void (*glibc_pthread_exit)(void *retval) = NULL;
+static int (*rt_pthread_setspecific)(unsigned int key, const void *value) = NULL;
 static int (*rt_pthread_once)(int *once_control, void (*init_routine)(void)) = NULL;
-static void *(*glibc_pthread_getspecific)(unsigned int key) = NULL;
-static int (*glibc_pthread_key_create)(unsigned int *key, void (*destructor)(void*)) = NULL;
+static void *(*rt_pthread_getspecific)(unsigned int key) = NULL;
+static int (*rt_pthread_key_create)(unsigned int *key, void (*destructor)(void*)) = NULL;
 static int (*glibc_pthread_mutex_lock)(void *__mutex) = NULL;
 static int (*glibc_pthread_mutex_unlock)(void *__mutex) = NULL;
 static int (*glibc_pthread_cond_timedwait)(void *restrict cond, void *restrict mutex, void *restrict abstime) = NULL;
@@ -273,8 +318,9 @@ static unsigned long (*glibc_strtoul)(const char *, char **, int) = NULL;
 static unsigned long long (*glibc_strtoull)(const char *, char **, int) = NULL;
 
 static int (*glibc_posix_memalign)(void **memptr, size_t alignment, size_t size) = NULL;
-static double (*glibc_atof)(const char*a) = NULL;
+static void *(*glibc_memalign)(size_t alignment, size_t size) = NULL;
 
+static double (*glibc_atof)(const char*a) = NULL;
 static double (*glibc_strtod)(const char*, char**) = NULL;
 static float (*glibc_strtof)(const char*, char**) = NULL;
 static long double (*glibc_strtold)(const char*, char**) = NULL;
@@ -302,6 +348,7 @@ typedef struct {
         long long int  rem;
 } lldiv_t;
 
+char *__progname = NULL;
 
 static lldiv_t (*glibc_lldiv)(long long, long long) = NULL;
 static const char* (*glibc_getprogname)(void) = NULL;
@@ -354,6 +401,8 @@ static int (*rt_pthread_mutexattr_destroy)(void *attr) = NULL;
 static void *(*glibc_pthread_self)(void) = NULL;
 static int (*rt_pthread_mutexattr_settype)(void *attr, int type) = NULL;
 static int (*glibc_pthread_equal)(void *t1, void * t2) = NULL;
+static int (*rt_pthread_mutexattr_getpshared)(const void *restrict attr, int *restrict pshared) = NULL;
+static int (*rt_pthread_mutexattr_setpshared)(void *attr, int pshared) = NULL;
 static int (*glibc_open)(const char *path, int oflag, ...) = NULL;
 static int (*glibc_close)(int a) = NULL;
 static ssize_t (*glibc___read_chk)(int fd, void * buf, size_t nbytes, size_t buflen) = NULL;
@@ -450,6 +499,7 @@ static void* (*glibc_memset)(void *s, int c, size_t n) = NULL;
 static size_t (*glibc_strlen)(const char *s) = NULL;
 static void *(*glibc___memcpy_chk)(void * dest, const void * src, size_t len, size_t destlen) = NULL;
 static void *(*glibc_mmap)(void *addr, size_t len, int prot, int flags, int fildes, off_t off) = NULL;
+static void *(*glibc_mmap64)(void *addr, size_t len, int prot, int flags, int fildes, off64_t off) = NULL;
 static int (*glibc_munmap)(void *addr, size_t len) = NULL;
 static pid_t  (*glibc_fork)(void) = NULL;
 static pid_t  (*glibc_vfork)(void) = NULL;
@@ -513,15 +563,15 @@ static void *(*glibc_freopen)(const char *path, const char *mode, void *stream) 
 static void *(*glibc_fdopen)(int fd, const char *mode) = NULL;
 static void *(*glibc_fopen)(const char *path, const char *mode) = NULL;
 static int (*glibc_fclose)(void *stream) = NULL;
+static int (*glibc_feof)(void *) = NULL;
 static int (*glibc_sched_setscheduler)(pid_t pid, int policy, const void *param) = NULL;
 static int (*glibc_sched_getscheduler)(pid_t pid) = NULL;
-static int (*glibc___cxa_guard_acquire)(void *g) = NULL;
 static int (*glibc___vsprintf_chk)(char * str, int flag, size_t strlen, const char * format, va_list ap) = NULL;
 static int (*glibc_getpagesize)(void) = NULL;
 static int (*rt_pthread_create)(pthread_t *thread, const pthread_attr_t *attr, void *(*start_routine) (void *), void *arg);
 static ssize_t (*glibc_getline)(char **lineptr, size_t *n, void *stream) = NULL;
 static int (*glibc_stat)(const char *restrict path, void *restrict buf) = NULL;
-static long (*glibc_syscall)(long number, ...) = NULL;
+long (*glibc_syscall)(long number, ...) = NULL;
 static int (*glibc_pthread_attr_init)(pthread_attr_t *__attr) = NULL;
 static int (*glibc_pthread_attr_destroy)(pthread_attr_t *__attr) = NULL;
 static int (*glibc_pthread_attr_setdetachstate)(pthread_attr_t *__attr, int state) = NULL;
@@ -542,7 +592,44 @@ static int (*glibc_pthread_attr_setscope)(pthread_attr_t *__attr, int scope) = N
 static int (*glibc_pthread_attr_getscope)(pthread_attr_t const *__attr, int *scope) = NULL;
 static int (*glibc_pthread_cond_timedwait_relative_np)(pthread_cond_t *cond, pthread_mutex_t *mutex, const struct timespec *reltime) = NULL;
 static int (*glibc_pthread_condattr_init)(pthread_condattr_t *attr) = NULL;
-static int (*glibc_bind)(int socket, const void *address, unsigned int address_len);
+static int (*glibc_bind)(int socket, const void *address, unsigned int address_len) = NULL;
+static int (*glibc_accept)(int socket, void *restrict address, unsigned int *restrict address_len) = NULL;
+int (*glibc_readdir_r)(void *dir, void *entry, void **result) = NULL;
+void *(*glibc_readdir)(void *dir) = NULL;
+static void *(*glibc_opendir)(const char *name) = NULL;
+static int (*glibc_closedir)(void *dirp) = NULL;
+static int (*glibc_sysinfo)(void *info) = NULL;
+static int (*glibc_sem_init)(void *sem, int pshared, unsigned int value) = NULL;
+static int (*glibc_sem_wait)(void *sem) = NULL;
+static int (*glibc_sem_trywait)(void *sem) = NULL;
+static int (*glibc_sem_timedwait)(void *sem, const void *abs_timeout) = NULL;
+static int (*glibc_sem_post)(void *sem) = NULL;
+static int (*glibc_sem_destroy)(void *sem) = NULL;
+static int (*glibc_sched_setaffinity)(pid_t pid, size_t cpusetsize, const void *mask) = NULL;
+static int (*glibc_sched_getaffinity)(pid_t pid, size_t cpusetsize, void *mask) = NULL;
+static int (*glibc_ferror)(void *stream) = NULL;
+
+static int (*glibc_finite)(double x) = NULL;
+static int (*glibc_finitef)(float x) = NULL;
+static int (*glibc_finitel)(long double x) = NULL;
+
+static int (*glibc_isinf)(double x) = NULL;
+static int (*glibc_isinff)(float x) = NULL;
+static int (*glibc_isinfl)(long double x) = NULL;
+
+static int (*glibc_isnan)(double x) = NULL;
+static int (*glibc_isnanf)(float x) = NULL;
+static int (*glibc_isnanl)(long double x) = NULL;
+int (*glibc_getaddrinfo)(const char *hostname, const char *servname,
+    const void *hints, void **res) = NULL;
+int (*glibc_freeaddrinfo)(void *__ai) = NULL;
+
+static int (*glibc_fseek)(void *stream, long offset, int whence) = NULL;
+static int (*glibc_fseeko)(void *stream, off_t offset, int whence) = NULL;
+static long (*glibc_ftell)(void *stream) = NULL;
+static int (*glibc_fileno)(void *stream) = NULL;
+static void (*glibc_rewind)(BIONIC_FILE *stream) = NULL;
+static off_t (*glibc_ftello)(void *stream) = NULL;
 
 BIONIC_FILE __sF[3];
 
@@ -559,7 +646,7 @@ int android_dl_namespace_id = 0;
 #define LOAD_GLIBC() \
     if(glibc_handle == NULL) \
     { \
-        glibc_handle = dlmopen(android_dl_namespace_id, "/lib/libc.so.6", RTLD_LAZY); \
+        glibc_handle = dlmopen(LM_ID_BASE, "/lib/libc.so.6", RTLD_LAZY); \
     }
 
 #define LOAD_GLIBC_SYMBOL(f) \
@@ -567,18 +654,21 @@ int android_dl_namespace_id = 0;
     { \
         LOAD_GLIBC(); \
         glibc_ ## f = dlsym(glibc_handle, #f); \
+    }/* \
+    if(!glibc_fprintf) glibc_fprintf = dlsym(glibc_handle, "fprintf"); \
+    if(!glibc_stderr) glibc_stderr = dlsym(glibc_handle, "stderr"); \
+    glibc_fprintf(*glibc_stderr, "%s is at %p called from %s\n", #f, glibc_ ## f, __FUNCTION__);*/
+
+#define LOAD_PTHREAD() \
+    if(pthread_handle == NULL) \
+    { \
+        pthread_handle = dlmopen(LM_ID_BASE, "/lib/libpthread.so.0", RTLD_LAZY); \
     }
-#if 0
-\
-    if(glibc_fprintf == NULL) glibc_fprintf = dlsym(glibc_handle, "fprintf"); \
-    if(glibc_stderr == NULL) glibc_stderr = dlsym(glibc_handle, "stderr"); \
-    glibc_fprintf(*glibc_stderr, "%s is at %p\n", #f, glibc_ ##f)
-#endif
 
 #define LOAD_RT() \
     if(rt_handle == NULL) \
     { \
-        rt_handle = dlmopen(android_dl_namespace_id, "/lib/librt.so.1", RTLD_LAZY); \
+        rt_handle = dlmopen(LM_ID_BASE, "/lib/librt.so.1", RTLD_LAZY); \
     }
 
 #define LOAD_RT_SYMBOL(f) \
@@ -586,15 +676,56 @@ int android_dl_namespace_id = 0;
     { \
         LOAD_RT(); \
         rt_ ## f = dlsym(rt_handle, #f); \
+    }/* \
+    if(!glibc_fprintf) glibc_fprintf = dlsym(glibc_handle, "fprintf"); \
+    if(!glibc_stderr) glibc_stderr = dlsym(glibc_handle, "stderr"); \
+    glibc_fprintf(*glibc_stderr, "%s is at %p called from %s\n", #f, rt_ ## f, __FUNCTION__);*/
+
+#define LOAD_GCC() \
+    if(gcc_handle == NULL) \
+    { \
+        gcc_handle = dlmopen(LM_ID_BASE, "/usr/lib/libgcc_s.so", RTLD_LAZY); \
     }
-#if 0
-    \
-    if(glibc_fprintf == NULL) glibc_fprintf = dlsym(glibc_handle, "fprintf"); \
-    if(glibc_stderr == NULL) glibc_stderr = dlsym(glibc_handle, "stderr"); \
-    glibc_fprintf(*glibc_stderr, "%s is at %p\n", #f, rt_ ##f)
-#endif
+
+#define LOAD_GCC_SYMBOL(f) \
+    if(gcc_ ## f == NULL) \
+    { \
+        LOAD_GCC(); \
+        gcc_ ## f = dlsym(gcc_handle, #f); \
+    }/* \
+    if(!glibc_fprintf) glibc_fprintf = dlsym(glibc_handle, "fprintf"); \
+    if(!glibc_stderr) glibc_stderr = dlsym(glibc_handle, "stderr"); \
+    glibc_fprintf(*glibc_stderr, "%s is at %p called from %s\n", #f, gcc_ ## f, __FUNCTION__);*/
+
+#define LOAD_SETJMP() \
+    if(setjmp_handle == NULL) \
+    { \
+        setjmp_handle = dlmopen(android_dl_namespace_id, "libsetjmp.so", RTLD_LAZY); \
+    }
+#define LOAD_SETJMP_SYMBOL(f) \
+    if(setjmp_ ## f == NULL) \
+    { \
+        LOAD_SETJMP(); \
+        setjmp_ ## f = dlsym(setjmp_handle, STRINGIFY(my_ ##f); \
+    }/* \
+    if(!glibc_fprintf) glibc_fprintf = dlsym(glibc_handle, "fprintf"); \
+    if(!glibc_stderr) glibc_stderr = dlsym(glibc_handle, "stderr"); \
+    glibc_fprintf(*glibc_stderr, "%s is at %p called from %s\n", #f, setjmp_ ## f, __FUNCTION__);*/
 
 static void (*init_dlfunctions)(int a_dl_ns_id, void *op, void *sym, void *addr, void *err, void *clo, void *it);
+
+void __attribute__ ((constructor)) default_constructor()
+{
+    LOAD_GLIBC();
+    LOAD_RT();
+    LOAD_GCC();
+    LOAD_PTHREAD();
+}
+
+void init_setjmp()
+{
+    LOAD_SETJMP();
+}
 
 // provide dlopen and friends for fake libdl.so
 void init_dl(int a_dl_ns_id) __attribute__((visibility("default")));
@@ -608,6 +739,7 @@ void init_dl(int a_dl_ns_id)
     init_dlfunctions(android_dl_namespace_id, dlmopen, dlsym, dladdr, dlerror, dlclose, dl_iterate_phdr);
 
     LOAD_GLIBC_SYMBOL(syscall);
+    __progname = program_invocation_name;
 }
 
 static void *_get_actual_fp(BIONIC_FILE *fp)
@@ -628,6 +760,7 @@ static void *_get_actual_fp(BIONIC_FILE *fp)
 
 volatile int *__errno(void)
 {
+    //fprintf(stderr, "getting errno\n");
     return &errno;
 }
 
@@ -697,6 +830,24 @@ int __cxa_atexit(void (*p1)(void *), void *p2, void *p3)
 
     return glibc___cxa_atexit(p1, p2, p3);
 }
+/*
+int __cxa_guard_acquire(void *g) SOFTFP;
+
+int __cxa_guard_acquire(void *g)
+{
+    LOAD_CPP_SYMBOL(__cxa_guard_acquire);
+
+    return cpp___cxa_guard_acquire(g);
+}
+
+void __cxa_guard_release(void *g) SOFTFP;
+
+void __cxa_guard_release(void *g)
+{
+    LOAD_CPP_SYMBOL(__cxa_guard_release);
+
+    cpp___cxa_guard_release(g);
+}*/
 
 int __register_atfork(void (*prepare)(void), void (*parent)(void), void (*child)(void), void* dso) SOFTFP;
 
@@ -861,9 +1012,6 @@ size_t __strlen_chk(const char* s, size_t s_len) SOFTFP;
 
 size_t __strlen_chk(const char* s, size_t s_len)
 {
-//    LOAD_GLIBC_SYMBOL(__strlen_chk);
-
-//    return glibc___strlen_chk(s, s_len);
     LOAD_GLIBC_SYMBOL(strlen);
     return glibc_strlen(s);
 }
@@ -1235,7 +1383,8 @@ static void hybris_set_mutex_attr(unsigned int android_value, void *attr)
 static void* hybris_alloc_init_mutex(unsigned int android_mutex)
 {
     LOAD_GLIBC_SYMBOL(pthread_mutex_init);
-    void *realmutex = malloc(sizeof(pthread_mutex_t));
+    LOAD_GLIBC_SYMBOL(malloc);
+    void *realmutex = glibc_malloc(sizeof(pthread_mutex_t));
     pthread_mutexattr_t attr;
     hybris_set_mutex_attr(android_mutex, &attr);
     glibc_pthread_mutex_init(realmutex, &attr);
@@ -1244,9 +1393,11 @@ static void* hybris_alloc_init_mutex(unsigned int android_mutex)
 
 int pthread_attr_init(pthread_attr_t *__attr)
 {
+    LOAD_GLIBC_SYMBOL(pthread_attr_init);
     pthread_attr_t *realattr;
 
-    realattr = malloc(sizeof(pthread_attr_t)); 
+    LOAD_GLIBC_SYMBOL(malloc);
+    realattr = glibc_malloc(sizeof(pthread_attr_t)); 
     *((unsigned int *)__attr) = (unsigned int) realattr;
 
     return glibc_pthread_attr_init(realattr);
@@ -1257,10 +1408,13 @@ int pthread_attr_destroy(pthread_attr_t *__attr)
     int ret;
     pthread_attr_t *realattr = (pthread_attr_t *) *(unsigned int *) __attr;
 
-    ret = pthread_attr_destroy(realattr);
+    LOAD_GLIBC_SYMBOL(pthread_attr_destroy);
+    LOAD_GLIBC_SYMBOL(free);
+
+    ret = glibc_pthread_attr_destroy(realattr);
     /* We need to release the memory allocated at pthread_attr_init
      * Possible side effects if destroy is called without our init */
-    free(realattr);
+    glibc_free(realattr);
 
     return ret;
 }
@@ -1416,18 +1570,18 @@ int pthread_setspecific(unsigned int key, const void *value) SOFTFP;
 
 int pthread_setspecific(unsigned int key, const void *value)
 {
-    LOAD_GLIBC_SYMBOL(pthread_setspecific);
+    LOAD_RT_SYMBOL(pthread_setspecific);
 
-    return glibc_pthread_setspecific(key, value);
+    return rt_pthread_setspecific(key, value);
 }
 
 void *pthread_getspecific(unsigned int key) SOFTFP;
 
 void *pthread_getspecific(unsigned int key)
 {
-    LOAD_GLIBC_SYMBOL(pthread_getspecific);
+    LOAD_RT_SYMBOL(pthread_getspecific);
 
-    return glibc_pthread_getspecific(key);
+    return rt_pthread_getspecific(key);
 }
 
 int pthread_once(int *once_control, void (*init_routine)(void)) SOFTFP;
@@ -1442,28 +1596,6 @@ long __set_errno_internal(int e)
 {
     errno = e;
     return -1;
-}
-
-int fstatat(int a, const char *restrict p, void *restrict b, int x)
-{
-#warning __NR_fstatat64 has been replaced with 327
-    return glibc_syscall(327,a, p, b, x);
-    /*
-    __asm__ volatile("\
-    mov     ip, r7\n\
-    ldr     r7, =327\n\
-    swi     #0\n\
-    mov     r7, ip\n\
-    cmn     r0, #4096\n\
-    bxls    lr\n\
-    neg     r0, r0\n\
-    b       __set_errno_internal\n");
-    */
-}
-
-int stat(const char *restrict path, void *restrict buf)
-{
-    return fstatat(/*AT_FDCWD*/-100, path, buf, 0);
 }
 
 int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_routine) (void *), void *arg) SOFTFP;
@@ -1484,9 +1616,9 @@ int pthread_key_create(unsigned int *key, void (*destructor)(void*)) SOFTFP;
 
 int pthread_key_create(unsigned int *key, void (*destructor)(void*))
 {
-    LOAD_GLIBC_SYMBOL(pthread_key_create);
+    LOAD_RT_SYMBOL(pthread_key_create);
 
-    return glibc_pthread_key_create(key, destructor);
+    return rt_pthread_key_create(key, destructor);
 }
 
 static pthread_cond_t* hybris_alloc_init_cond(void)
@@ -3725,15 +3857,44 @@ int pthread_mutex_destroy(void *mutex)
 {
     LOAD_GLIBC_SYMBOL(pthread_mutex_destroy);
 
+    LOAD_GLIBC_SYMBOL(fprintf);
+    LOAD_GLIBC_SYMBOL(stderr);
     pthread_mutex_t *realmutex = (pthread_mutex_t *) *(unsigned int *) mutex;
 
-    return glibc_pthread_mutex_destroy(realmutex);
+    if(!realmutex) return EINVAL;
+    int ret = glibc_pthread_mutex_destroy(realmutex);
+    return ret;
+}
+
+int pthread_mutexattr_getpshared(const void *restrict attr, int *restrict pshared) SOFTFP;
+
+int pthread_mutexattr_getpshared(const void *restrict attr, int *restrict pshared)
+{
+    LOAD_RT_SYMBOL(pthread_mutexattr_getpshared);
+
+    return rt_pthread_mutexattr_getpshared(attr, pshared);
+}
+
+int pthread_mutexattr_setpshared(void *attr, int pshared) SOFTFP;
+
+int pthread_mutexattr_setpshared(void *attr, int pshared)
+{
+    LOAD_RT_SYMBOL(pthread_mutexattr_setpshared);
+
+    return rt_pthread_mutexattr_setpshared(attr, pshared);
 }
 
 int pthread_mutex_init(void *restrict mutex, const void *restrict attr)
 {
     LOAD_GLIBC_SYMBOL(pthread_mutex_init);
     LOAD_GLIBC_SYMBOL(malloc);
+    LOAD_RT_SYMBOL(pthread_mutexattr_getpshared);
+
+    int pshared = 0;
+    if(attr)
+    {
+        rt_pthread_mutexattr_getpshared(attr, &pshared);
+    }
 
     *(unsigned int *) mutex = glibc_malloc(sizeof(pthread_mutex_t));
 
@@ -3946,7 +4107,6 @@ int sprintf(char *str, const char *format, ...)
 int snprintf(char *str, size_t size, const char *format, ...)
 {
     LOAD_GLIBC_SYMBOL(vsnprintf);
-
     int ret = 0;
 
     va_list args;
@@ -4388,15 +4548,6 @@ int raise(int sig)
     LOAD_GLIBC_SYMBOL(raise);
 
     return glibc_raise(sig);
-}
-
-int __cxa_guard_acquire(void *g) SOFTFP;
-
-int __cxa_guard_acquire(void *g)
-{
-    LOAD_GLIBC_SYMBOL(__cxa_guard_acquire);
-
-    return glibc___cxa_guard_acquire(g);
 }
 
 uintptr_t __stack_chk_guard = 0;
@@ -4942,7 +5093,7 @@ char*  strndup(const char *a, size_t b)
 int    strncmp(const char *a, const char *b, size_t c)
 {
     LOAD_GLIBC_SYMBOL(strncmp);
-
+    
     return glibc_strncmp(a, b, c);
 }
 
@@ -5065,13 +5216,6 @@ char* __strncpy_chk(char* __restrict dest, const char* __restrict src, size_t le
     LOAD_GLIBC_SYMBOL(__strncpy_chk);
 
     return glibc___strncpy_chk(dest, src, len, dest_len);
-}
-
-char* __strncpy_chk2(char* restrict a, const char* restrict b, size_t c, size_t d, size_t e)
-{
-    LOAD_GLIBC_SYMBOL(__strncpy_chk2);
-
-    return glibc___strncpy_chk2(a, b, c, d, e);
 }
 
 size_t __strlcpy_chk(char *a, const char *b, size_t c, size_t d)
@@ -5525,60 +5669,63 @@ ssize_t getline(char **lineptr, size_t *n, BIONIC_FILE *stream)
     return glibc_getline(lineptr, n, _get_actual_fp(stream));
 }
 
-extern int feof(void *);
-
+// TODO
 int __system_property_get(const char *name, char *value) SOFTFP;
 int __system_property_get(const char *name, char *value)
 {
     LOAD_GLIBC_SYMBOL(fprintf);
-    LOAD_GLIBC_SYMBOL(stderr);
     LOAD_GLIBC_SYMBOL(fopen);
     LOAD_GLIBC_SYMBOL(strlen);
     LOAD_GLIBC_SYMBOL(strstr);
     LOAD_GLIBC_SYMBOL(strcpy);
     LOAD_GLIBC_SYMBOL(fclose);
     LOAD_GLIBC_SYMBOL(getline);
+    LOAD_GLIBC_SYMBOL(feof);
+    LOAD_GLIBC_SYMBOL(free);
     
-    glibc_fprintf(*glibc_stderr, "__system_property_get(%s, %s)\n", name, value);
+    //glibc_fprintf(*glibc_stderr, "__system_property_get(%s)\n", name);
 
     void *fp = glibc_fopen("/system/build.prop", "r");
 
     char *line = NULL;
-    while(!feof(fp))
+    while(fp && !glibc_feof(fp))
     {
-        int len;
-        while(glibc_getline(&line, &len, fp) >= 0)
+        size_t len = 4096;
+        int read;
+        while((read = glibc_getline(&line, &len, fp)) != -1)
         {
-            line[1023] = 0;
+            line[read-1] = 0;
             char *pos = glibc_strstr(line, name);
             if(pos != NULL)
             {
+                //glibc_fprintf(*glibc_stderr, "found: \"%s\"\n", line);
                 glibc_strcpy(value, pos+strlen(name)+1);
-                // trim newline
-                value[glibc_strlen(value)-1] = 0;
-                glibc_fprintf(*glibc_stderr, "new value: \"%s\"\n", value);
-                goto exit;
+                //glibc_fprintf(*glibc_stderr, "new value: \"%s\"\n", value);
+                glibc_fclose(fp);
+
+                glibc_free(line);
+                return glibc_strlen(value);
             }
         }
+        glibc_free(line);
     }
 
-exit:
-    glibc_fclose(fp);
+    //glibc_fprintf(*glibc_stderr, "%s not found\n", name);
 
-    return glibc_strlen(value);
+    return 0;
 }
 
 int __system_property_set(const char *name, char *value) SOFTFP;
 int __system_property_set(const char *name, char *value)
 {
-    fprintf(stderr, "__system_property_set(%s, %s)\n", name, value);
+    //fprintf(stderr, "__system_property_set(%s, %s)\n", name, value);
     return 0;
 }
 
 int __system_property_foreach(void (*propfn)(const void *pi, void *cookie), void *cookie) SOFTFP;
 int __system_property_foreach(void (*propfn)(const void *pi, void *cookie), void *cookie)
 {
-     fprintf(stderr, "__system_property_foreach\n");
+     //fprintf(stderr, "__system_property_foreach\n");
 
      return 0;
 }
@@ -5586,7 +5733,7 @@ int __system_property_foreach(void (*propfn)(const void *pi, void *cookie), void
 unsigned int __system_property_serial(void *pi) SOFTFP;
 unsigned int __system_property_serial(void *pi)
 {
-    fprintf(stderr, "__system_property_serial(%p)\n", pi);
+    //fprintf(stderr, "__system_property_serial(%p)\n", pi);
 
     return 0;
 }
@@ -5594,7 +5741,7 @@ unsigned int __system_property_serial(void *pi)
 void *__system_property_find_compat(const char *name) SOFTFP; 
 void *__system_property_find_compat(const char *name)
 {
-    fprintf(stderr, "__system_property_find_compat(%s)\n", name);
+    //fprintf(stderr, "__system_property_find_compat(%s)\n", name);
 
     return NULL;
 }
@@ -5602,7 +5749,7 @@ void *__system_property_find_compat(const char *name)
 const void *__system_property_find(const char *name) SOFTFP;
 const void *__system_property_find(const char *name)
 {
-    fprintf(stderr, "__system_property_find(%s)\n", name);
+    //fprintf(stderr, "__system_property_find(%s)\n", name);
 
     return NULL;
 }
@@ -5611,14 +5758,14 @@ unsigned int __system_property_area_serial(void) SOFTFP;
 
 unsigned int __system_property_area_serial(void)
 {
-    fprintf(stderr, "__system_property_area_serial\n");
+    //fprintf(stderr, "__system_property_area_serial\n");
 
     return 0;
 }
 
 int __system_property_read(const void *pi, char *name, char *value)
 {
-    fprintf(stderr, "__system_property_read(%p, %s, %s)\n", pi, name, value);
+    //fprintf(stderr, "__system_property_read(%p, %s, %s)\n", pi, name, value);
 
     return 0;
 }
@@ -5728,13 +5875,6 @@ int sched_setscheduler(pid_t pid, int policy, const void *param)
     return glibc_sched_setscheduler(pid, policy, param);
 }
 
-long syscall(long a, ...) __attribute__((naked,noinline)) SOFTFP;
-
-long syscall(long a, ...)
-{
-    __asm__ volatile("b glibc_syscall\n");
-}
-
 int getpagesize(void)
 {
     LOAD_GLIBC_SYMBOL(getpagesize);
@@ -5749,9 +5889,377 @@ int __aeabi_atexit(void *object, void (*destructor) (void *), void *dso_handle)
     return glibc___aeabi_atexit(object, destructor, dso_handle);
 }
 
+int bind(int socket, const void *address, unsigned int address_len) SOFTFP;
+
 int bind(int socket, const void *address, unsigned int address_len)
 {
     LOAD_GLIBC_SYMBOL(bind);
 
     return glibc_bind(socket, address, address_len);
 }
+
+int accept(int socket, void *restrict address, unsigned int *restrict address_len) SOFTFP;
+
+int accept(int socket, void *restrict address, unsigned int *restrict address_len)
+{
+    LOAD_GLIBC_SYMBOL(accept);
+
+    return glibc_accept(socket, address, address_len);
+}
+
+extern int my_readdir_r(void *dir, void *entry, void **result);
+extern void *my_readdir(void *dir);
+
+int readdir_r(void *dir, void *entry,
+        void **result) SOFTFP;
+void *readdir(void *dir) SOFTFP;
+
+int readdir_r(void *dir, void *entry,
+        void **result)
+{
+    LOAD_GLIBC_SYMBOL(readdir_r);
+    LOAD_GLIBC_SYMBOL(memcpy);
+
+    return my_readdir_r(dir, entry, result);
+}
+
+void *readdir(void *dir)
+{
+    LOAD_GLIBC_SYMBOL(readdir_r);
+    LOAD_GLIBC_SYMBOL(memcpy);
+
+    return my_readdir(dir);
+}
+
+void *opendir(const char *name) SOFTFP;
+void *opendir(const char *name)
+{
+    LOAD_GLIBC_SYMBOL(opendir);
+
+    return glibc_opendir(name);
+}
+
+int closedir(void *dirp) SOFTFP;
+int closedir(void *dirp)
+{
+    LOAD_GLIBC_SYMBOL(closedir);
+
+    return glibc_closedir(dirp);
+}
+
+void __assert(const char *f, int l, const char *e) __attribute__((noreturn));
+void __assert(const char *f, int l, const char *e)
+{
+    LOAD_GLIBC_SYMBOL(fprintf);
+    LOAD_GLIBC_SYMBOL(stderr);
+
+    glibc_fprintf(*glibc_stderr, "assertion failed: %s @ %s:%d\n", e, f, l);
+
+    abort();
+}
+
+void __assert2(const char* file, int line, const char* function, const char* failed_expression) __attribute__((noreturn));
+void __assert2(const char* file, int line, const char* function, const char* failed_expression)
+{
+    LOAD_GLIBC_SYMBOL(fprintf);
+    LOAD_GLIBC_SYMBOL(stderr);
+
+    glibc_fprintf(*glibc_stderr, "assertion failed: %s @ %s:%d(%s)\n", failed_expression, file, line, function);
+
+    abort();
+}
+
+void *mmap64(void *addr, size_t len, int prot, int flags, int fildes, off64_t off) SOFTFP;
+
+void *mmap64(void *addr, size_t len, int prot, int flags, int fildes, off64_t off)
+{
+    LOAD_GLIBC_SYMBOL(mmap64);
+
+    return glibc_mmap64(addr, len, prot, flags, fildes, off);
+}
+
+void *memalign(size_t alignment, size_t size) SOFTFP;
+
+void *memalign(size_t alignment, size_t size)
+{
+    LOAD_GLIBC_SYMBOL(memalign);
+
+    return glibc_memalign(alignment, size);
+}
+
+void pthread_exit(void *retval) SOFTFP;
+
+void pthread_exit(void *retval)
+{
+    LOAD_GLIBC_SYMBOL(pthread_exit);
+
+    return glibc_pthread_exit(retval);
+}
+
+pid_t pthread_gettid_np(pthread_t t) SOFTFP;
+pid_t pthread_gettid_np(pthread_t t)
+{
+    // unimplemented
+    fprintf(stderr, "pthread_gettid_np unimplemented.\n");
+    abort();
+}
+
+int sysinfo(void *info) SOFTFP;
+
+int sysinfo(void *info)
+{
+    LOAD_GLIBC_SYMBOL(sysinfo);
+
+    return glibc_sysinfo(info);
+}
+
+int sem_init(void *sem, int pshared, unsigned int value) SOFTFP;
+
+int sem_init(void *sem, int pshared, unsigned int value)
+{
+    LOAD_GLIBC_SYMBOL(sem_init);
+
+    return glibc_sem_init(sem, pshared, value);
+}
+
+int sem_wait(void *sem) SOFTFP;
+int sem_trywait(void *sem) SOFTFP;
+int sem_timedwait(void *sem, const void *abs_timeout) SOFTFP;
+int sem_post(void *sem) SOFTFP;
+
+int sem_wait(void *sem)
+{
+    LOAD_GLIBC_SYMBOL(sem_wait);
+
+    return glibc_sem_wait(sem);
+}
+
+int sem_trywait(void *sem)
+{
+    LOAD_GLIBC_SYMBOL(sem_trywait);
+
+    return glibc_sem_trywait(sem);
+}
+
+int sem_timedwait(void *sem, const void *abs_timeout)
+{
+    LOAD_GLIBC_SYMBOL(sem_timedwait);
+
+    return glibc_sem_timedwait(sem, abs_timeout);
+}
+
+int sem_post(void *sem)
+{
+    LOAD_GLIBC_SYMBOL(sem_post);
+
+    return glibc_sem_post(sem);
+}
+
+int sem_destroy(void *sem)
+{
+    LOAD_GLIBC_SYMBOL(sem_destroy);
+
+    return glibc_sem_destroy(sem);
+}
+
+// TODO?
+int sched_setaffinity(pid_t pid, size_t cpusetsize, const void *mask)
+{
+    LOAD_GLIBC_SYMBOL(sched_setaffinity);
+
+    return glibc_sched_setaffinity(pid, cpusetsize, mask);
+}
+
+int sched_getaffinity(pid_t pid, size_t cpusetsize, void *mask)
+{
+    LOAD_GLIBC_SYMBOL(sched_getaffinity);
+
+    return glibc_sched_getaffinity(pid, cpusetsize, mask);
+}
+
+int ferror(BIONIC_FILE *stream) SOFTFP;
+
+int ferror(BIONIC_FILE *stream)
+{
+    LOAD_GLIBC_SYMBOL(ferror);
+
+    return glibc_ferror(_get_actual_fp(stream));
+}
+
+int *__get_h_errno(void) SOFTFP;
+int *__get_h_errno(void)
+{
+    return __h_errno_location();
+}
+
+int finite(double x) SOFTFP;
+int finite(double x)
+{
+    LOAD_GLIBC_SYMBOL(finite);
+    return glibc_finite(x);
+}
+
+int finitef(float x) SOFTFP;
+int finitef(float x)
+{
+    LOAD_GLIBC_SYMBOL(finitef);
+    return glibc_finitef(x);
+}
+
+int finitel(long double x) SOFTFP;
+int finitel(long double x)
+{
+    LOAD_GLIBC_SYMBOL(finitel);
+    return glibc_finitel(x);
+}
+
+int isinf(double x) SOFTFP;
+int isinf(double x)
+{
+    LOAD_GLIBC_SYMBOL(isinf);
+    return glibc_isinf(x);
+}
+
+int isinff(float x) SOFTFP;
+int isinff(float x)
+{
+    LOAD_GLIBC_SYMBOL(isinff);
+    return glibc_isinff(x);
+}
+
+int isinfl(long double x) SOFTFP;
+int isinfl(long double x)
+{
+    LOAD_GLIBC_SYMBOL(isinfl);
+    return glibc_isinfl(x);
+}
+
+int isnan(double x) SOFTFP;
+int isnan(double x)
+{
+    LOAD_GLIBC_SYMBOL(isnan);
+    return glibc_isnan(x);
+}
+
+int isnanf(float x) SOFTFP;
+int isnanf(float x)
+{
+    LOAD_GLIBC_SYMBOL(isnanf);
+    return glibc_isnanf(x);
+}
+
+int isnanl(long double x) SOFTFP;
+int isnanl(long double x)
+{
+    LOAD_GLIBC_SYMBOL(isnanl);
+    return glibc_isnanl(x);
+}
+
+#include <sys/select.h>
+#include <sys/types.h>
+// TODO?
+void __FD_SET_chk(int a, fd_set *b, size_t c) SOFTFP;
+void __FD_SET_chk(int a, fd_set *b, size_t c)
+{
+    FD_SET(a, b);
+}
+
+void __FD_CLR_chk(int a, fd_set *b) SOFTFP;
+void __FD_CLR_chk(int a, fd_set *b)
+{
+    FD_CLR(a, b);
+}
+
+int __FD_ISSET_chk(int a, fd_set *b) SOFTFP;
+int __FD_ISSET_chk(int a, fd_set *b)
+{
+    return FD_ISSET(a, b);
+}
+
+
+static __thread void *tls_hooks[16];
+
+void *__get_tls_hooks(void)
+{
+    return tls_hooks;
+}
+
+extern void my_freeaddrinfo(void*);
+extern int my_getaddrinfo(const char *, const char *, const void*, void**);
+
+int getaddrinfo(const char *hostname, const char *servname,
+    const void *hints, void **res) SOFTFP;
+int getaddrinfo(const char *hostname, const char *servname,
+    const void *hints, void **res)
+{
+    LOAD_GLIBC_SYMBOL(getaddrinfo);
+    LOAD_GLIBC_SYMBOL(memcpy);
+    LOAD_GLIBC_SYMBOL(free);
+    LOAD_GLIBC_SYMBOL(malloc);
+
+    return my_getaddrinfo(hostname, servname, hints, res);
+}
+
+void freeaddrinfo(void *__ai) SOFTFP;
+void freeaddrinfo(void *__ai)
+{
+    LOAD_GLIBC_SYMBOL(freeaddrinfo);
+    my_freeaddrinfo(__ai);
+}
+
+int fseek(BIONIC_FILE *stream, long offset, int whence) SOFTFP;
+int fseek(BIONIC_FILE *stream, long offset, int whence)
+{
+    LOAD_GLIBC_SYMBOL(fseek);
+
+    return glibc_fseek(_get_actual_fp(stream), offset, whence);
+}
+
+int fseeko(BIONIC_FILE *stream, long offset, int whence) SOFTFP;
+int fseeko(BIONIC_FILE *stream, off_t offset, int whence)
+{
+    LOAD_GLIBC_SYMBOL(fseeko);
+
+    return glibc_fseeko(_get_actual_fp(stream), offset, whence);
+}
+
+long ftell(BIONIC_FILE *stream) SOFTFP;
+long ftell(BIONIC_FILE *stream)
+{
+    LOAD_GLIBC_SYMBOL(ftell);
+
+    return glibc_ftell(_get_actual_fp(stream));
+}
+
+int fileno(BIONIC_FILE *stream) SOFTFP;
+int fileno(BIONIC_FILE *stream)
+{
+    LOAD_GLIBC_SYMBOL(fileno);
+
+    return glibc_fileno(_get_actual_fp(stream));
+}
+
+void rewind(BIONIC_FILE *stream) SOFTFP;
+void rewind(BIONIC_FILE *stream)
+{
+    LOAD_GLIBC_SYMBOL(rewind);
+    
+    return glibc_rewind(stream);
+}
+
+off_t ftello(BIONIC_FILE *stream) SOFTFP;
+off_t ftello(BIONIC_FILE *stream)
+{
+    LOAD_GLIBC_SYMBOL(ftello);
+
+    return glibc_ftello(stream);
+}
+
+char* __strncpy_chk2(char *a, const char* b, size_t c, size_t d, size_t e) SOFTFP;
+char* __strncpy_chk2(char *a, const char* b, size_t c, size_t d, size_t e)
+{
+    LOAD_GLIBC_SYMBOL(__strncpy_chk);
+
+    return glibc___strncpy_chk(a, b, c, d);
+}
+

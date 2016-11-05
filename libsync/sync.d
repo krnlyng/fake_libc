@@ -1,0 +1,1 @@
+sync.o: sync.c

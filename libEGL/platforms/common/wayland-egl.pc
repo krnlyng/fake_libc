@@ -1,0 +1,10 @@
+prefix=/usr
+exec_prefix=${prefix}
+libdir=/usr/lib
+includedir=/usr/include
+
+Name: wayland-egl
+Description: libhybris wayland-egl library
+Version: 0.1.0
+Libs: -L${libdir} -lwayland-egl
+Cflags: -I${includedir}

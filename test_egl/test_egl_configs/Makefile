@@ -1,19 +1,15 @@
-OUT         := libc.so
-SRC         := fake_libc.c \
-				strlcpy.c \
-				strlcat.c \
-				helpers.c \
-				dummy.cpp
+OUT         := test_egl_configs
+SRC         := test_egl_configs.c
 
 OBJ         := $(patsubst %.c, %.o, $(filter %.c, $(SRC)))
 OBJ         += $(patsubst %.cpp, %.o, $(filter %.cpp, $(SRC)))
 OBJ         += $(patsubst %.s, %.o, $(filter %.s, $(SRC)))
 DEP         := $(OBJ:.o=.d)
 
-CFLAGS      := -Wall -std=c99 -mhard-float -fPIC -marm
-CXXFLAGS    := -Wall -Werror -std=c++0x -mhard-float -fPIC -marm
-LDFLAGS     := -shared -Wl,--version-script=libc.map
-LDLIBS      := -ldl
+CFLAGS      := -Wall -std=c99 -mhard-float -fPIC
+CXXFLAGS    := -Wall -Werror -std=c++0x -mhard-float -fPIC
+LDFLAGS     :=
+LDLIBS      := -lEGL
 
 DEBUG       ?= 0
 VERBOSE     ?= 0

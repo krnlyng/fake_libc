@@ -1,19 +1,18 @@
-OUT         := libc.so
-SRC         := fake_libc.c \
-				strlcpy.c \
-				strlcat.c \
-				helpers.c \
-				dummy.cpp
+OUT         := libEGL.so.1
+SRC         := egl.c \
+                logging.c \
+				helper.cpp \
+				ws.c
 
 OBJ         := $(patsubst %.c, %.o, $(filter %.c, $(SRC)))
 OBJ         += $(patsubst %.cpp, %.o, $(filter %.cpp, $(SRC)))
 OBJ         += $(patsubst %.s, %.o, $(filter %.s, $(SRC)))
 DEP         := $(OBJ:.o=.d)
 
-CFLAGS      := -Wall -std=c99 -mhard-float -fPIC -marm
-CXXFLAGS    := -Wall -Werror -std=c++0x -mhard-float -fPIC -marm
-LDFLAGS     := -shared -Wl,--version-script=libc.map
-LDLIBS      := -ldl
+CFLAGS      := -Wall -std=c99 -mhard-float -fPIC -I/usr/lib/droid-devel/droid-headers -I. -DDEFAULT_EGL_PLATFORM="\"null\"" -DPKGLIBDIR="\"/usr/lib/libhybris/\"" -Iplatforms/common
+CXXFLAGS    := -Wall -std=c++0x -mhard-float -fPIC -I/usr/lib/droid-devel/droid-headers -I. -DDEFAULT_EGL_PLATFORM="\"null\"" -DPKGLIBDIR="\"/usr/lib/libhybris/\"" -Iplatforms/common
+LDFLAGS     := -shared
+LDLIBS      := -ldl -landroid_namespace -lstdc++
 
 DEBUG       ?= 0
 VERBOSE     ?= 0
@@ -44,7 +43,7 @@ clean:
 
 $(OUT): $(OBJ)
 	$(MSG) -e "\tLINK\t$@"
-	$(CMD)$(CC) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+	$(CMD)$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 %.o: %.s
 	$(MSG) -e "\tAS\t$@"
@@ -65,6 +64,8 @@ $(OUT): $(OBJ)
 %.d: %.cpp
 	$(MSG) -e "\tDEP\t$@"
 	$(CMD)$(CXX) $(CXXFLAGS) -MF $@ -MM $<
+	$(CMD)sed -e 's|.*:|$*.o:|' < $@.tmp > $@
+	$(CMD)rm -rf $*.d.tmp
 
 ifneq ($(MAKECMDGOALS),clean)
 -include $(DEP)

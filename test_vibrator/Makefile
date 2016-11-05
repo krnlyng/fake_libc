@@ -1,6 +1,6 @@
 CFLAGS  = -Wall -Werror -std=c99 -fPIC -mhard-float -I/usr/lib/droid-devel/droid-headers
 LDFLAGS = -ldl
-LDLIBS  =
+LDLIBS  = -landroid_namespace
 OUT     = test_vibrator
 OBJ     = test_vibrator.o vibrator.o
 

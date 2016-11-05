@@ -13,18 +13,12 @@ static void *libhardware_handle = NULL;
 static int (*libhardware_hw_get_module)(const char *, const struct hw_module_t **) SOFTFP;
 static int (*libhardware_hw_get_module_by_class)(const char *, const char *m, const struct hw_module_t **) SOFTFP;
 
+extern void *android_dlopen(const char *name, int flags);
+
 #define LOAD_LIBHARDWARE() \
     if(!libhardware_handle) \
     { \
-        int android_dl_namespace_id = 0; \
-        int (*init_dl)(int); \
-        void *libchandle = dlmopen(LM_ID_NEWLM, "libc.so", RTLD_NOW); \
-        assert(libchandle != NULL); \
-        dlinfo(libchandle, RTLD_DI_LMID, &android_dl_namespace_id); \
-        init_dl = dlsym(libchandle, "init_dl"); \
-        assert(init_dl != NULL); \
-        init_dl(android_dl_namespace_id); \
-        libhardware_handle = dlmopen(android_dl_namespace_id, LIBHARDWARE_PATH, RTLD_LAZY); \
+        libhardware_handle = android_dlopen(LIBHARDWARE_PATH, RTLD_LAZY); \
         assert(libhardware_handle != NULL); \
     }
 

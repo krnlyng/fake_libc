@@ -32,10 +32,12 @@ static int (*libhardware_legacy_vibrator_exists)(void) SOFTFP;
 static int (*libhardware_legacy_vibrator_on)(int) SOFTFP;
 static int (*libhardware_legacy_vibrator_off)(int) SOFTFP;
 
+extern void *android_dlopen(const char *name, int flags);
+
 #define LOAD_LIBHARDWARE_LEGACY() \
 	if(!libhardware_legacy_handle) \
 	{ \
-		libhardware_legacy_handle = dlmopen(LM_ID_NEWLM, LIBHARDWARE_LEGACY_PATH, RTLD_LAZY); \
+		libhardware_legacy_handle = android_dlopen(LIBHARDWARE_LEGACY_PATH, RTLD_LAZY); \
         \
 	}
 

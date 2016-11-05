@@ -1,5 +1,5 @@
 CFLAGS  = -Wall -Werror -std=c99 -fPIC -mhard-float -I/usr/lib/droid-devel/droid-headers
-LDFLAGS = -ldl -shared
+LDFLAGS = -ldl -shared -landroid_namespace
 LDLIBS  =
 OUT     = libhardware.so
 OBJ     = hardware.o
