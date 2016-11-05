@@ -1,6 +1,7 @@
 #include "helpers.h"
 #include <cstring>
 #include <cassert>
+
 extern "C" {
 
 extern int fprintf(void *, const char *, ...);
@@ -24,7 +25,6 @@ extern void *dlsym(const void *handle, const char *name);
     void * f ## _dispatch(void) __asm__(#f); \
     void * f ## _dispatch(void) \
     { \
-        fprintf(stderr, "dispatching %s\n", #f); \
         void *ret = dlsym(glibc_handle, #f); \
         assert(ret); \
         return ret; \
@@ -34,7 +34,6 @@ extern void *dlsym(const void *handle, const char *name);
     void * f ## _dispatch(void) __asm__(#f); \
     void * f ## _dispatch(void) \
     { \
-        fprintf(stderr, "dispatching %s -> %s\n", #f, #f2); \
         void *ret = dlsym(glibc_handle, #f2); \
         assert(ret); \
         return ret; \
@@ -44,7 +43,6 @@ extern void *dlsym(const void *handle, const char *name);
     void * f ## _dispatch(void) __asm__(#f); \
     void * f ## _dispatch(void) \
     { \
-        fprintf(stderr, "dispatching %s\n", #f); \
         void *ret = dlsym(gcc_handle, #f); \
         assert(ret); \
         return ret; \
@@ -54,7 +52,6 @@ extern void *dlsym(const void *handle, const char *name);
     void * f ## _dispatch(void) __asm__(#f); \
     void * f ## _dispatch(void) \
     { \
-        fprintf(stderr, "dispatching %s\n", #f); \
         void *ret = dlsym(rt_handle, #f); \
         assert(ret); \
         return ret; \
@@ -64,7 +61,6 @@ extern void *dlsym(const void *handle, const char *name);
     void * f ## _dispatch(void) __asm__(#f); \
     void * f ## _dispatch(void) \
     { \
-        fprintf(stderr, "dispatching %s\n", #f); \
         void *ret = dlsym(pthread_handle, #f); \
         assert(ret); \
         return ret; \
@@ -75,7 +71,6 @@ extern void init_setjmp();
     void * f ## _dispatch(void) __asm__(#f); \
     void * f ## _dispatch(void) \
     { \
-        fprintf(stderr, "dispatching %s\n", #f); \
         init_setjmp(); \
         void *ret = dlsym(setjmp_handle, STRINGIFY(my_##f)); \
         assert(ret); \
