@@ -29,6 +29,19 @@ libc++.so.
 ## test_sensors
 Same as above, modified libc++.so. test taken from libhybris.
 
+## test_egl
+modified some more libraries (glibc patch should be made finally).
+
+## test_hwcomposer
+many more files modified. one additional quirk for glibc: don't call
+.init_array functions which are nullptr's. for some reason the android linker
+allows this and also handles it the same way i've done it in glibc.
+
+## how to run the tests
+export EGL_PLATFORM=hwcomposer # depending on test
+LD_LIBRARY_PATH=/path/to/fake_libc_libs_and_modified_android_libs:/usr/libexec/droid-hybris/system/lib:/system/lib:/vendor/lib test_XXX
+
+
 # COMPILE
 compile test.so using the android build system
 compile libc.so using sb2 make
