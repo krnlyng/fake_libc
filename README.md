@@ -1,6 +1,17 @@
 # WHAT IS THIS?
 this is an attempt to load android libraries with the gnu ld.so.
 
+## the following tests from libhybris have been compiled against this and work:
+* test_vibrator
+* test_sensors
+* test_egl
+* test_hwcomposer
+
+### how to run the tests:
+`export EGL_PLATFORM=hwcomposer # depending on test`
+
+`LD_LIBRARY_PATH=/path/to/fake/libc/libs:/usr/libexec/droid-hybris/system/lib:/system/lib:/vendor/lib test_XXX`
+
 ## changes required to glibc
 * may not have any checks for hardfp / softfp mismatches
 * must have a patch which makes it ingore .init_array pointers which are zero
@@ -10,21 +21,8 @@ this is an attempt to load android libraries with the gnu ld.so.
 * some android libs have to be patched with relocation_patcher from the android
   build system. any lib that uses DT_ANDROID_RELA needs to be patched
 
-### ALTERNATIVE:
+### alternative:
 * patch glibc to support this kinds of relocations
-
-## the following tests from libhybris have been compiled against this and work:
-* test_vibrator
-* test_sensors
-* test_egl
-* test_hwcomposer
-
-how to run the tests:
-
-
-`export EGL_PLATFORM=hwcomposer # depending on test`
-
-`LD_LIBRARY_PATH=/path/to/fake/libc/libs:/usr/libexec/droid-hybris/system/lib:/system/lib:/vendor/lib test_XXX`
 
 # compile
 use `sb2 make` to compile the libraries. i will try to set up a nicer build
