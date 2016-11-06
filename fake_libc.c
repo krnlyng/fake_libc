@@ -1960,6 +1960,8 @@ int __system_property_get(const char *name, char *value)
         free(line);
     }
 
+    strcpy(last_value, "");
+    strcpy(last_property, name);
     //glibc_fprintf(*glibc_stderr, "%s not found\n", name);
     glibc_fclose(fp);
     return 0;
