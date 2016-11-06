@@ -1,54 +1,66 @@
 # WHAT IS THIS?
-
 this is an attempt to load android libraries with the gnu ld.so.
 
-the example program does the following:
+## changes required to glibc
+* may not have any checks for hardfp / softfp mismatches
+* must have a patch which makes it ingore .init_array pointers which are zero
+  the android loader allows these kinds of pointers and ignores them as well
 
-test_fake_libc:
-    binary linked against glibc
-    loads test.so via dlopen from glibc
+## changes required to android libs
+* some android libs have to be patched with relocation_patcher from the android
+  build system. any lib that uses DT_ANDROID_RELA needs to be patched
 
-test.so:
-    binary linked against bionic libc
-    test_function prints three lines, one with a floating point argument.
+### ALTERNATIVE:
+* patch glibc to support this kinds of relocations
 
-libc.so:
-    a very small library which currently only implements a few bionic functions
-    by loading glibc via dlopen and calling into it, currently it dlsyms every
-    symbol and is thus probably slow. but i hope that gnu indirect functions
-    can make it faster
+## the following tests from libhybris have been compiled against this and work:
+* test_vibrator
+* test_sensors
+* test_egl
+* test_hwcomposer
 
-this requires ld.so to have no checks for hardfp / softfp mismatches
-
-## test_vibrator
-there is also an example which loads libhardware_legacy.so and initiates the
-vibrator. It requires one additional quirk (until i patch glibc or figure out
-another way) and that is to use relocation_packer from bionic/tools to modify
-libc++.so.
-
-## test_sensors
-Same as above, modified libc++.so. test taken from libhybris.
-
-## test_egl
-modified some more libraries (glibc patch should be made finally).
-
-## test_hwcomposer
-many more files modified. one additional quirk for glibc: don't call
-.init_array functions which are nullptr's. for some reason the android linker
-allows this and also handles it the same way i've done it in glibc.
-
-## how to run the tests
-export EGL_PLATFORM=hwcomposer # depending on test
-LD_LIBRARY_PATH=/path/to/fake_libc_libs_and_modified_android_libs:/usr/libexec/droid-hybris/system/lib:/system/lib:/vendor/lib test_XXX
+how to run the tests:
 
 
-# COMPILE
-compile test.so using the android build system
-compile libc.so using sb2 make
-compile test_fake_libc using sb2 make
+`export EGL_PLATFORM=hwcomposer # depending on test`
+
+`LD_LIBRARY_PATH=/path/to/fake/libc/libs:/usr/libexec/droid-hybris/system/lib:/system/lib:/vendor/lib test_XXX`
+
+# compile
+use `sb2 make` to compile the libraries. i will try to set up a nicer build
+system eventually
+
+# how does it work?
+lets take `test_hwcomposer` as an example:
+
+`test_hwcomposer` is linked against `libEGL.so.1` which is linked against
+`libhardware.so`
+
+both these libraries are linked against `libandroid_namespace.so` which
+provides a function called `android_dlopen`. this function is a wrapper around
+gnu `dlmopen`, the wrapper loads `libc.so` (the fake one) into a new namespace
+when first called and initializes this library. then it loads the library which
+was intended to be opened into the same namespace (the one passed to
+`android_dlopen` as an argument). lets call this namespace `android_namespace`
+from now on.
+
+`libc.so`s init function loads `libdl.so` (the fake one) and `libdl.so.2` (the
+gnu one) and then passes `libdl.so.2`s functions to `libdl.so` such that when
+an android library calls `dlopen` it knows which `dlopen` to use (namely again
+`dlmopen` with the android namespace as argument). `libc.so` provides most of
+the bionic libc functions (with versioning) and redirects them to the
+appropriate glibc functions. `setjmp` and `longjmp` were tricky but in the end
+i just copied the functions into a seperate android library which i load in
+the fake libc (with prefix `my_` to avoid issues).
+
+`libEGL.so.1` loads androids `libEGL.so` via `android_dlopen` and (gnu)
+`dlsym`s all the symbols it requires on demand.
+`libharware.so` does the same for androids `/system/lib/libhardware.so`.
+
+tls is provided to the android libraries in a similar way libhybris does it:
+use a `__thread` variable and android calls `__get_tls_hooks`.
 
 # WHY?
-
-to remove the need for the android linker in hybris implementations (i still
-don't know whether it is even feasible)
+* maybe to remove the need for the android linker in hybris adaptions?
+* maybe to do some crazy sfdroid stuff?
 
