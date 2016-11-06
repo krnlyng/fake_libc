@@ -7,14 +7,12 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <string.h>
 
 #include "helpers.h"
 
 extern int (*glibc_readdir_r)(void *dir, struct dirent *entry, struct dirent **result);
 extern void *(*glibc_readdir)(void *dir);
-extern void *(*glibc_memcpy)(void *a, void *b, size_t s);
-extern void (*glibc_free)(void *a);
-extern void *(*glibc_malloc)(void *a);
 
 struct bionic_dirent {
     uint64_t         d_ino;
@@ -40,7 +38,7 @@ int my_readdir_r(DIR *dir, struct bionic_dirent *entry,
             entry->d_off = entry_r.d_off;
             entry->d_reclen = entry_r.d_reclen;
             entry->d_type = entry_r.d_type;
-            glibc_memcpy(entry->d_name, entry_r.d_name, sizeof(entry->d_name));
+            memcpy(entry->d_name, entry_r.d_name, sizeof(entry->d_name));
 
             // Make sure the string is zero-terminated, even if cut off (which
             // shouldn't happen, as both bionic and glibc have d_name defined
@@ -79,7 +77,7 @@ struct bionic_dirent *my_readdir(DIR *dirp)
     result.d_off = real_result->d_off;
     result.d_reclen = real_result->d_reclen;
     result.d_type = real_result->d_type;
-    glibc_memcpy(result.d_name, real_result->d_name, sizeof(result.d_name));
+    memcpy(result.d_name, real_result->d_name, sizeof(result.d_name));
 
     // Make sure the string is zero-terminated, even if cut off (which
     // shouldn't happen, as both bionic and glibc have d_name defined
@@ -96,21 +94,21 @@ static inline void swap(void **a, void **b)
 }
 
 extern int (*glibc_getaddrinfo)(const char *hostname, const char *servname,
-    const void *hints, void **res);
-extern int (*glibc_freeaddrinfo)(void *__ai);
+    const void *hints, struct addrinfo **res);
+extern int (*glibc_freeaddrinfo)(struct addrinfo *__ai);
 
 int my_getaddrinfo(const char *hostname, const char *servname,
     const struct addrinfo *hints, struct addrinfo **res)
 {
     // make a local copy of hints
-    struct addrinfo *fixed_hints = (struct addrinfo*)glibc_malloc(sizeof(struct addrinfo));
-    glibc_memcpy(fixed_hints, hints, sizeof(struct addrinfo));
+    struct addrinfo *fixed_hints = (struct addrinfo*)malloc(sizeof(struct addrinfo));
+    memcpy(fixed_hints, hints, sizeof(struct addrinfo));
     // fix bionic -> glibc missmatch
     swap((void**)&(fixed_hints->ai_canonname), (void**)&(fixed_hints->ai_addr));
     // do glibc getaddrinfo
     int result = glibc_getaddrinfo(hostname, servname, fixed_hints, res);
     // release the copy of hints
-    glibc_free(fixed_hints);
+    free(fixed_hints);
     // fix bionic <- glibc missmatch
     struct addrinfo *it = *res;
     while(NULL != it)
