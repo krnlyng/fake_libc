@@ -49,9 +49,13 @@ gnu one) and then passes `libdl.so.2`s functions to `libdl.so` such that when
 an android library calls `dlopen` it knows which `dlopen` to use (namely again
 `dlmopen` with the android namespace as argument). `libc.so` provides most of
 the bionic libc functions (with versioning) and redirects them to the
-appropriate glibc functions. `setjmp` and `longjmp` were tricky but in the end
-i just copied the functions into a seperate android library which i load in
-the fake libc (with prefix `my_` to avoid issues).
+appropriate glibc functions. the redirects either are gnu indirect functions
+(for optimal performance) or wrappers because floating point functions have to
+be handled specially, functions with `FILE*` arguments have to be handled
+specially and `pthread` functions have to be handled specially and some
+functions don't have glibc equivalents. `setjmp` and `longjmp` were tricky but
+in the end i just copied the functions into a seperate android library which i
+load in the fake libc (with prefix `my_` to avoid issues).
 
 `libEGL.so.1` loads androids `libEGL.so` via `android_dlopen` and (gnu)
 `dlsym`s all the symbols it requires on demand.
