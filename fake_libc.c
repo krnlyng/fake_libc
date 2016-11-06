@@ -353,7 +353,9 @@ void init_dl(int a_dl_ns_id)
     void *libdl = dlmopen(android_dl_namespace_id, "libdl.so", RTLD_LAZY);
     init_dlfunctions = dlsym(libdl, "init_dlfunctions");
 
-    init_dlfunctions(android_dl_namespace_id, dlmopen, dlsym, dladdr, dlerror, dlclose, dl_iterate_phdr);
+    void *gnu_libdl = dlmopen(LM_ID_BASE, "libdl.so.2", RTLD_LAZY);
+
+    init_dlfunctions(android_dl_namespace_id, dlsym(gnu_libdl, "dlmopen"), dlsym(gnu_libdl, "dlsym"), dlsym(gnu_libdl, "dladdr"), dlsym(gnu_libdl, "dlerror"), dlsym(gnu_libdl, "dlclose"), dlsym(gnu_libdl, "dl_iterate_phdr"));
 
     LOAD_GLIBC_SYMBOL(syscall);
     __progname = program_invocation_name;
