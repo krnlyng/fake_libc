@@ -1,4 +1,11 @@
 *.o
 *.so
+*.d
+*.so.*
 test_fake_libc
+test_egl_configs
+test_egl
+test_hwcomposer
+test_vibrator
+test_sensors
 
