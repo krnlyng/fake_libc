@@ -345,17 +345,14 @@ extern BIONIC_FILE __sF[3];
 extern char *__progname;
 
 // provide dlopen and friends for fake libdl.so
-void init_dl(int a_dl_ns_id) __attribute__((visibility("default")));
-void init_dl(int a_dl_ns_id)
+void init_dl(int a_dl_ns_id, void *op, void *sym, void *addr, void *err, void *clo, void *it)
 {
     android_dl_namespace_id = a_dl_ns_id;
 
     void *libdl = dlmopen(android_dl_namespace_id, "libdl.so", RTLD_LAZY);
     init_dlfunctions = dlsym(libdl, "init_dlfunctions");
 
-    void *gnu_libdl = dlmopen(LM_ID_BASE, "libdl.so.2", RTLD_LAZY);
-
-    init_dlfunctions(android_dl_namespace_id, dlsym(gnu_libdl, "dlmopen"), dlsym(gnu_libdl, "dlsym"), dlsym(gnu_libdl, "dladdr"), dlsym(gnu_libdl, "dlerror"), dlsym(gnu_libdl, "dlclose"), dlsym(gnu_libdl, "dl_iterate_phdr"));
+    init_dlfunctions(android_dl_namespace_id, op, sym, addr, err, clo, it);
 
     LOAD_GLIBC_SYMBOL(syscall);
     __progname = program_invocation_name;
