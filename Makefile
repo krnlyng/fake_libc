@@ -3,7 +3,7 @@ SRC         := fake_libc.c \
 				strlcpy.c \
 				strlcat.c \
 				helpers.c \
-				dummy.cpp
+				dispatch_and_syscalls.cpp
 
 OBJ         := $(patsubst %.c, %.o, $(filter %.c, $(SRC)))
 OBJ         += $(patsubst %.cpp, %.o, $(filter %.cpp, $(SRC)))
