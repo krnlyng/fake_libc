@@ -45,6 +45,8 @@ clean:
 $(OUT): $(OBJ)
 	$(MSG) -e "\tLINK\t$@"
 	$(CMD)$(CC) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+	@echo "WARNING: Removing hardfp abi tag (not warning about the fact, warning about the method)"
+	$(CMD)sed -i "0,/\x02\x04\x00\x05/ s/\x02\x04\x00\x05/\x00\x00\x00\x05/" $(OUT)
 
 %.o: %.s
 	$(MSG) -e "\tAS\t$@"

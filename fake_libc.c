@@ -251,6 +251,9 @@ static void (*glibc_rewind)(BIONIC_FILE *stream) = NULL;
 static off_t (*glibc_ftello)(void *stream) = NULL;
 void *(*glibc_funopen)(const void *cookie, int (*readfn)(void *, char *, int), int (*writefn)(void *, const char *, int), off_t (*seekfn)(void *, off_t, int), int (*closefn)(void *)) = NULL;
 
+static int (*glibc_fsetpos)(void *stream, const void *pos) = NULL;
+static int (*glibc_fgetpos)(void *stream, void *pos) = NULL;
+
 static void **glibc_stdin = NULL;
 static void **glibc_stdout = NULL;
 static void **glibc_stderr = NULL;
@@ -2369,5 +2372,22 @@ BIONIC_FILE *funopen(const void *cookie, int (*readfn)(void *, char *, int), int
     LOAD_GLIBC_SYMBOL(funopen);
 
     return funopen(cookie, readfn, writefn, seekfn, closefn);
+}
+
+int fgetpos(BIONIC_FILE *stream, void *pos) SOFTFP;
+int fsetpos(BIONIC_FILE *stream, const void *pos) SOFTFP;
+
+int fgetpos(BIONIC_FILE *stream, void *pos)
+{
+    LOAD_GLIBC_SYMBOL(fgetpos);
+
+    return fgetpos(_get_actual_fp(stream), pos);
+}
+
+int fsetpos(BIONIC_FILE *stream, const void *pos)
+{
+    LOAD_GLIBC_SYMBOL(fsetpos);
+
+    return fsetpos(_get_actual_fp(stream), pos);
 }
 
