@@ -12,7 +12,7 @@ DEP         := $(OBJ:.o=.d)
 
 CFLAGS      := -Wall -std=c99 -mhard-float -fPIC -marm
 CXXFLAGS    := -Wall -Werror -std=c++0x -mhard-float -fPIC -marm
-LDFLAGS     := -shared -Wl,--version-script=libc.map
+LDFLAGS     := --static -shared -Wl,--version-script=libc.map -l:crtbeginT.o -nostdlib
 LDLIBS      := -ldl
 
 DEBUG       ?= 0

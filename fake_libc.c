@@ -155,8 +155,8 @@ static int (*glibc_fprintf)(void *stream, const char *format, ...) = NULL;
 static double (*glibc_ldexp)(double, int) = NULL;
 static int (*glibc_fputs)(const char *s, void *stream) = NULL;
 static int (*glibc_fputc)(int c, void *stream) = NULL;
-static int (*glibc_pthread_mutex_lock)(void *__mutex) = NULL;
-static int (*glibc_pthread_mutex_unlock)(void *__mutex) = NULL;
+int (*glibc_pthread_mutex_lock)(void *__mutex) = NULL;
+int (*glibc_pthread_mutex_unlock)(void *__mutex) = NULL;
 static int (*glibc_pthread_cond_timedwait)(void *restrict cond, void *restrict mutex, void *restrict abstime) = NULL;
 static int (*glibc_pthread_cond_wait)(void *restrict cond, void *restrict mutex) = NULL;
 static int (*glibc_pthread_cond_broadcast)(void *cond) = NULL;
@@ -249,24 +249,28 @@ static long (*glibc_ftell)(void *stream) = NULL;
 static int (*glibc_fileno)(void *stream) = NULL;
 static void (*glibc_rewind)(BIONIC_FILE *stream) = NULL;
 static off_t (*glibc_ftello)(void *stream) = NULL;
+void *(*glibc_funopen)(const void *cookie, int (*readfn)(void *, char *, int), int (*writefn)(void *, const char *, int), off_t (*seekfn)(void *, off_t, int), int (*closefn)(void *)) = NULL;
 
 static void **glibc_stdin = NULL;
 static void **glibc_stdout = NULL;
 static void **glibc_stderr = NULL;
+
+void *(*glibc_dlmopen)(int lmid, const char *filename, int flags) = NULL;
+void *(*glibc_dlsym)(void *handle, const char *symbol) = NULL;
 
 int android_dl_namespace_id = 0;
 
 #define LOAD_GLIBC() \
     if(glibc_handle == NULL) \
     { \
-        glibc_handle = dlmopen(LM_ID_BASE, "/lib/libc.so.6", RTLD_LAZY); \
+        glibc_handle = glibc_dlmopen(LM_ID_BASE, "/lib/libc.so.6", RTLD_LAZY); \
     }
 
 #define LOAD_GLIBC_SYMBOL(f) \
     if(glibc_ ## f == NULL) \
     { \
         LOAD_GLIBC(); \
-        glibc_ ## f = dlsym(glibc_handle, #f); \
+        glibc_ ## f = glibc_dlsym(glibc_handle, #f); \
     }/* \
     if(!glibc_fprintf) glibc_fprintf = dlsym(glibc_handle, "fprintf"); \
     if(!glibc_stderr) glibc_stderr = dlsym(glibc_handle, "stderr"); \
@@ -275,20 +279,20 @@ int android_dl_namespace_id = 0;
 #define LOAD_PTHREAD() \
     if(pthread_handle == NULL) \
     { \
-        pthread_handle = dlmopen(LM_ID_BASE, "/lib/libpthread.so.0", RTLD_LAZY); \
+        pthread_handle = glibc_dlmopen(LM_ID_BASE, "/lib/libpthread.so.0", RTLD_LAZY); \
     }
 
 #define LOAD_RT() \
     if(rt_handle == NULL) \
     { \
-        rt_handle = dlmopen(LM_ID_BASE, "/lib/librt.so.1", RTLD_LAZY); \
+        rt_handle = glibc_dlmopen(LM_ID_BASE, "/lib/librt.so.1", RTLD_LAZY); \
     }
 
 #define LOAD_RT_SYMBOL(f) \
     if(rt_ ## f == NULL) \
     { \
         LOAD_RT(); \
-        rt_ ## f = dlsym(rt_handle, #f); \
+        rt_ ## f = glibc_dlsym(rt_handle, #f); \
     }/* \
     if(!glibc_fprintf) glibc_fprintf = dlsym(glibc_handle, "fprintf"); \
     if(!glibc_stderr) glibc_stderr = dlsym(glibc_handle, "stderr"); \
@@ -297,14 +301,14 @@ int android_dl_namespace_id = 0;
 #define LOAD_GCC() \
     if(gcc_handle == NULL) \
     { \
-        gcc_handle = dlmopen(LM_ID_BASE, "/usr/lib/libgcc_s.so", RTLD_LAZY); \
+        gcc_handle = glibc_dlmopen(LM_ID_BASE, "/usr/lib/libgcc_s.so", RTLD_LAZY); \
     }
 
 #define LOAD_GCC_SYMBOL(f) \
     if(gcc_ ## f == NULL) \
     { \
         LOAD_GCC(); \
-        gcc_ ## f = dlsym(gcc_handle, #f); \
+        gcc_ ## f = glibc_dlsym(gcc_handle, #f); \
     }/* \
     if(!glibc_fprintf) glibc_fprintf = dlsym(glibc_handle, "fprintf"); \
     if(!glibc_stderr) glibc_stderr = dlsym(glibc_handle, "stderr"); \
@@ -313,27 +317,19 @@ int android_dl_namespace_id = 0;
 #define LOAD_SETJMP() \
     if(setjmp_handle == NULL) \
     { \
-        setjmp_handle = dlmopen(android_dl_namespace_id, "libsetjmp.so", RTLD_LAZY); \
+        setjmp_handle = glibc_dlmopen(android_dl_namespace_id, "libsetjmp.so", RTLD_LAZY); \
     }
 #define LOAD_SETJMP_SYMBOL(f) \
     if(setjmp_ ## f == NULL) \
     { \
         LOAD_SETJMP(); \
-        setjmp_ ## f = dlsym(setjmp_handle, STRINGIFY(my_ ##f); \
+        setjmp_ ## f = glibc_dlsym(setjmp_handle, STRINGIFY(my_ ##f); \
     }/* \
     if(!glibc_fprintf) glibc_fprintf = dlsym(glibc_handle, "fprintf"); \
     if(!glibc_stderr) glibc_stderr = dlsym(glibc_handle, "stderr"); \
     glibc_fprintf(*glibc_stderr, "%s is at %p called from %s\n", #f, setjmp_ ## f, __FUNCTION__);*/
 
 static void (*init_dlfunctions)(int a_dl_ns_id, void *op, void *sym, void *addr, void *err, void *clo, void *it);
-
-void __attribute__ ((constructor)) default_constructor()
-{
-    LOAD_GLIBC();
-    LOAD_RT();
-    LOAD_GCC();
-    LOAD_PTHREAD();
-}
 
 void init_setjmp()
 {
@@ -345,17 +341,25 @@ extern BIONIC_FILE __sF[3];
 extern char *__progname;
 
 // provide dlopen and friends for fake libdl.so
-void init_dl(int a_dl_ns_id, void *op, void *sym, void *addr, void *err, void *clo, void *it)
+void init_dl(int a_dl_ns_id, void *op, void *sym, void *addr, void *err, void *clo, void *it, char *programname)
 {
+    glibc_dlmopen = op;
+    glibc_dlsym = sym;
+
+    LOAD_GLIBC();
+    LOAD_RT();
+    LOAD_GCC();
+    LOAD_PTHREAD();
+
     android_dl_namespace_id = a_dl_ns_id;
 
-    void *libdl = dlmopen(android_dl_namespace_id, "libdl.so", RTLD_LAZY);
-    init_dlfunctions = dlsym(libdl, "init_dlfunctions");
+    void *libdl = glibc_dlmopen(android_dl_namespace_id, "libdl.so", RTLD_LAZY);
+    init_dlfunctions = glibc_dlsym(libdl, "init_dlfunctions");
 
     init_dlfunctions(android_dl_namespace_id, op, sym, addr, err, clo, it);
 
     LOAD_GLIBC_SYMBOL(syscall);
-    __progname = program_invocation_name;
+    __progname = programname;
 }
 
 static void *_get_actual_fp(BIONIC_FILE *fp)
@@ -746,17 +750,38 @@ long __set_errno_internal(int e)
     return -1;
 }
 
+void *my_start_routine(void *con)
+{
+    void **container = con;
+    void *(*start_routine)(void *) = container[0];
+
+    pthread_t thread = pthread_self();
+    pid_t pid = gettid();
+
+    my_settid_to_thread(thread, pid);
+
+    start_routine(container[1]);
+
+    my_remtid(thread);
+}
+
 int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_routine) (void *), void *arg) SOFTFP;
 int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_routine) (void *), void *arg)
 {
     LOAD_RT_SYMBOL(pthread_create);
+    LOAD_GLIBC_SYMBOL(pthread_mutex_lock);
+    LOAD_GLIBC_SYMBOL(pthread_mutex_unlock);
 
     pthread_attr_t *realattr = NULL;
 
     if (attr != NULL)
             realattr = (pthread_attr_t *) *(unsigned int *) attr;
 
-    int ret = rt_pthread_create(thread, realattr, start_routine, arg);
+    void *container[2];
+    container[0] = start_routine;
+    container[1] = arg;
+
+    int ret = rt_pthread_create(thread, realattr, my_start_routine, &container);
     return ret;
 }
 
@@ -2066,12 +2091,18 @@ void __assert2(const char* file, int line, const char* function, const char* fai
     abort();
 }
 
+extern pid_t my_getpid_from_thread(pthread_t t);
+
 pid_t pthread_gettid_np(pthread_t t) SOFTFP;
 pid_t pthread_gettid_np(pthread_t t)
 {
-    // unimplemented
-    fprintf(stderr, "pthread_gettid_np unimplemented.\n");
-    abort();
+    return my_getpid_from_thread(t);
+}
+
+pid_t __pthread_gettid(pthread_t t) SOFTFP;
+pid_t __pthread_gettid(pthread_t t)
+{
+    return pthread_gettid_np(t);
 }
 
 int ferror(BIONIC_FILE *stream) SOFTFP;
@@ -2272,5 +2303,71 @@ const char* getprogname(void)
 void setprogname(const char *a)
 {
     __progname = a;
+}
+
+#include <math.h>
+
+#define ANDROID_FP_INFINITE     0x01                                                        
+#define ANDROID_FP_NAN          0x02                                                        
+#define ANDROID_FP_NORMAL       0x04                                                        
+#define ANDROID_FP_SUBNORMAL    0x08                                                    
+#define ANDROID_FP_ZERO         0x10
+
+int __isfinite(double d) SOFTFP;
+int __isnormal(double d) SOFTFP;
+int __isnan(double d) SOFTFP;
+int __isinf(double d) SOFTFP;
+
+int __isfinite(double d)
+{
+    return isfinite(d);
+}
+
+int __isnormal(double d)
+{
+    return isnormal(d);
+}
+
+int __isnan(double f)
+{
+    return isnan(f);
+}
+
+int __isinf(double d)
+{
+    return isinf(d);
+}
+
+int __isfinitef(float d) SOFTFP;
+int __isnormalf(float d) SOFTFP;
+int __isnanf(float d) SOFTFP;
+int __isinff(float d) SOFTFP;
+
+int __isfinitef(float d)
+{
+    return isfinite(d);
+}
+
+int __isnormalf(float d)
+{
+    return isnormal(d);
+}
+
+int __isnanf(float f)
+{
+    return isnan(f);
+}
+
+int __isinff(float f)
+{
+    return __isinf(f);
+}
+
+BIONIC_FILE *funopen(const void *cookie, int (*readfn)(void *, char *, int), int (*writefn)(void *, const char *, int), off_t (*seekfn)(void *, off_t, int), int (*closefn)(void *)) SOFTFP;
+BIONIC_FILE *funopen(const void *cookie, int (*readfn)(void *, char *, int), int (*writefn)(void *, const char *, int), off_t (*seekfn)(void *, off_t, int), int (*closefn)(void *))
+{
+    LOAD_GLIBC_SYMBOL(funopen);
+
+    return funopen(cookie, readfn, writefn, seekfn, closefn);
 }
 

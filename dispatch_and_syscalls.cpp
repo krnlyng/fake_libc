@@ -2,6 +2,7 @@
 #include <cstring>
 #include <cassert>
 #include <fcntl.h>
+#include <dlfcn.h>
 
 extern "C" {
 
@@ -18,14 +19,24 @@ extern void *pthread_handle;
 
 extern void *setjmp_handle;
 
-extern void *dlsym(const void *handle, const char *name);
+extern void *(*glibc_dlsym)(void *handle, const char *name);
+
+void *my_dlsym(void *handle, const char *name)
+{
+    // during init use our libdl
+    if(glibc_dlsym == NULL)
+    {
+        return dlsym(handle, name);
+    }
+    return glibc_dlsym(handle, name);
+}
 
 #define DISPATCH_GLIBC(f) \
     __asm__(".type " #f ", %gnu_indirect_function"); \
     void * f ## _dispatch(void) __asm__(#f); \
     void * f ## _dispatch(void) \
     { \
-        void *ret = dlsym(glibc_handle, #f); \
+        void *ret = my_dlsym(glibc_handle, #f); \
         assert(ret); \
         return ret; \
     }
@@ -34,7 +45,7 @@ extern void *dlsym(const void *handle, const char *name);
     void * f ## _dispatch(void) __asm__(#f); \
     void * f ## _dispatch(void) \
     { \
-        void *ret = dlsym(glibc_handle, #f2); \
+        void *ret = my_dlsym(glibc_handle, #f2); \
         assert(ret); \
         return ret; \
     }
@@ -43,7 +54,7 @@ extern void *dlsym(const void *handle, const char *name);
     void * f ## _dispatch(void) __asm__(#f); \
     void * f ## _dispatch(void) \
     { \
-        void *ret = dlsym(gcc_handle, #f); \
+        void *ret = my_dlsym(gcc_handle, #f); \
         assert(ret); \
         return ret; \
     }
@@ -52,7 +63,7 @@ extern void *dlsym(const void *handle, const char *name);
     void * f ## _dispatch(void) __asm__(#f); \
     void * f ## _dispatch(void) \
     { \
-        void *ret = dlsym(rt_handle, #f); \
+        void *ret = my_dlsym(rt_handle, #f); \
         assert(ret); \
         return ret; \
     }
@@ -61,7 +72,7 @@ extern void *dlsym(const void *handle, const char *name);
     void * f ## _dispatch(void) __asm__(#f); \
     void * f ## _dispatch(void) \
     { \
-        void *ret = dlsym(pthread_handle, #f); \
+        void *ret = my_dlsym(pthread_handle, #f); \
         assert(ret); \
         return ret; \
     }
@@ -72,7 +83,7 @@ extern void init_setjmp();
     void * f ## _dispatch(void) \
     { \
         init_setjmp(); \
-        void *ret = dlsym(setjmp_handle, STRINGIFY(my_##f)); \
+        void *ret = my_dlsym(setjmp_handle, STRINGIFY(my_##f)); \
         assert(ret); \
         return ret; \
     }
