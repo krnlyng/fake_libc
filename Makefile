@@ -3,17 +3,18 @@ SRC         := fake_libc.c \
 				strlcpy.c \
 				strlcat.c \
 				helpers.c \
-				dispatch_and_syscalls.cpp
+				dispatch_and_syscalls.cpp \
+				cpphelpers.cpp
 
 OBJ         := $(patsubst %.c, %.o, $(filter %.c, $(SRC)))
 OBJ         += $(patsubst %.cpp, %.o, $(filter %.cpp, $(SRC)))
 OBJ         += $(patsubst %.s, %.o, $(filter %.s, $(SRC)))
 DEP         := $(OBJ:.o=.d)
 
-CFLAGS      := -Wall -std=c99 -mhard-float -fPIC -marm
-CXXFLAGS    := -Wall -Werror -std=c++0x -mhard-float -fPIC -marm
-LDFLAGS     := --static -shared -Wl,--version-script=libc.map -l:crtbeginT.o -nostdlib
-LDLIBS      := -ldl
+CFLAGS      := -Wall -std=c99 -mhard-float -fPIC -marm -nostdinc -I/usr/local/musl/include
+CXXFLAGS    := -Wall -Werror -std=c++0x -mhard-float -fPIC -marm -nostdinc -I/usr/local/musl/include
+LDFLAGS     := -Wl,-no-undefined -static -shared -Wl,--version-script=libc.map -nostdlib -static-libstdc++ -static-libgcc
+LDLIBS      := -l:/usr/local/musl/lib/libc.a -l:/usr/local/musl/lib/libdl.a
 
 DEBUG       ?= 0
 VERBOSE     ?= 0

@@ -1,6 +1,5 @@
 #include "helpers.h"
-#include <cstring>
-#include <cassert>
+#include <string.h>
 #include <fcntl.h>
 #include <dlfcn.h>
 
@@ -23,12 +22,12 @@ extern void *(*glibc_dlsym)(void *handle, const char *name);
 
 void *my_dlsym(void *handle, const char *name)
 {
-    // during init use our libdl
-    if(glibc_dlsym == NULL)
-    {
-        return dlsym(handle, name);
-    }
     return glibc_dlsym(handle, name);
+}
+
+void assert(void* b)
+{
+    if(!b) abort();
 }
 
 #define DISPATCH_GLIBC(f) \
@@ -1581,12 +1580,12 @@ int __signalfd4(int fd, void* mask, size_t sizemask, int flags)
     return glibc_syscall(__NR_signalfd4, fd, mask, sizemask, flags);
 }
 
-int mknodat(int dirfd, const char *pathname, mode_t mode, dev_t dev)
+int mknodat(int dirfd, const char *pathname, mode_t mode, void *dev)
 {
     return glibc_syscall(__NR_mknodat, dirfd, pathname, mode, dev);
 }
 
-int mknod(const char* path, mode_t mode, dev_t dev) {
+int mknod(const char* path, mode_t mode, void *dev) {
     return mknodat(AT_FDCWD, path, mode, dev);
 }
 
@@ -1595,7 +1594,7 @@ int tgkill(pid_t tgid, pid_t tid, int sig)
     return glibc_syscall(__NR_tgkill, tgid, tid, sig);
 }
 
-int __rt_sigprocmask(int a, const sigset_t*b, sigset_t*c, size_t d)
+int __rt_sigprocmask(int a, const void *b, void *c, size_t d)
 {
     return glibc_syscall(__NR_rt_sigprocmask, a, b, c, d);
 }

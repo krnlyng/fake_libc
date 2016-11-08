@@ -10,6 +10,9 @@
 #include <sys/types.h>
 #include <string.h>
 
+#define LM_ID_BASE 0
+#define LM_ID_NEW -1
+
 /* Base address to check for Android specifics */                               
 #define ANDROID_TOP_ADDR_VALUE_MUTEX  0xFFFF                                    
 #define ANDROID_TOP_ADDR_VALUE_COND   0xFFFF                                    
@@ -32,13 +35,13 @@ enum
   PTHREAD_MUTEX_RECURSIVE_NP,
   PTHREAD_MUTEX_ERRORCHECK_NP,
   PTHREAD_MUTEX_ADAPTIVE_NP
-#if defined __USE_UNIX98 || defined __USE_XOPEN2K8
+//#if defined __USE_UNIX98 || defined __USE_XOPEN2K8
   ,
   PTHREAD_MUTEX_NORMAL = PTHREAD_MUTEX_TIMED_NP,
   PTHREAD_MUTEX_RECURSIVE = PTHREAD_MUTEX_RECURSIVE_NP,
   PTHREAD_MUTEX_ERRORCHECK = PTHREAD_MUTEX_ERRORCHECK_NP,
   PTHREAD_MUTEX_DEFAULT = PTHREAD_MUTEX_NORMAL
-#endif
+//#endif
 #ifdef __USE_GNU
   /* For compatibility.  */
   , PTHREAD_MUTEX_FAST_NP = PTHREAD_MUTEX_TIMED_NP
@@ -249,10 +252,11 @@ static long (*glibc_ftell)(void *stream) = NULL;
 static int (*glibc_fileno)(void *stream) = NULL;
 static void (*glibc_rewind)(BIONIC_FILE *stream) = NULL;
 static off_t (*glibc_ftello)(void *stream) = NULL;
-void *(*glibc_funopen)(const void *cookie, int (*readfn)(void *, char *, int), int (*writefn)(void *, const char *, int), off_t (*seekfn)(void *, off_t, int), int (*closefn)(void *)) = NULL;
-
+static void *(*glibc_funopen)(const void *cookie, int (*readfn)(void *, char *, int), int (*writefn)(void *, const char *, int), off_t (*seekfn)(void *, off_t, int), int (*closefn)(void *)) = NULL;
 static int (*glibc_fsetpos)(void *stream, const void *pos) = NULL;
 static int (*glibc_fgetpos)(void *stream, void *pos) = NULL;
+
+static int *(*glibc___h_errno_location)(void) = NULL;
 
 static void **glibc_stdin = NULL;
 static void **glibc_stdout = NULL;
@@ -1956,7 +1960,7 @@ int __system_property_get(const char *name, char *value)
     LOAD_GLIBC_SYMBOL(getline);
     LOAD_GLIBC_SYMBOL(feof);
     
-    //glibc_fprintf(*glibc_stderr, "__system_property_get(%s)\n", name);
+    glibc_fprintf(*glibc_stderr, "__system_property_get(%s)\n", name);
 
     void *fp = glibc_fopen("/system/build.prop", "r");
 
@@ -2094,12 +2098,10 @@ void __assert2(const char* file, int line, const char* function, const char* fai
     abort();
 }
 
-extern pid_t my_getpid_from_thread(pthread_t t);
-
 pid_t pthread_gettid_np(pthread_t t) SOFTFP;
 pid_t pthread_gettid_np(pthread_t t)
 {
-    return my_getpid_from_thread(t);
+    return my_gettid_from_thread(t);
 }
 
 pid_t __pthread_gettid(pthread_t t) SOFTFP;
@@ -2120,7 +2122,9 @@ int ferror(BIONIC_FILE *stream)
 int *__get_h_errno(void) SOFTFP;
 int *__get_h_errno(void)
 {
-    return __h_errno_location();
+    LOAD_GLIBC_SYMBOL(__h_errno_location);
+
+    return glibc___h_errno_location();
 }
 
 int finite(double x) SOFTFP;
@@ -2243,7 +2247,7 @@ int fseek(BIONIC_FILE *stream, long offset, int whence)
     return glibc_fseek(_get_actual_fp(stream), offset, whence);
 }
 
-int fseeko(BIONIC_FILE *stream, long offset, int whence) SOFTFP;
+int fseeko(BIONIC_FILE *stream, off_t offset, int whence) SOFTFP;
 int fseeko(BIONIC_FILE *stream, off_t offset, int whence)
 {
     LOAD_GLIBC_SYMBOL(fseeko);
@@ -2363,7 +2367,7 @@ int __isnanf(float f)
 
 int __isinff(float f)
 {
-    return __isinf(f);
+    return isinf(f);
 }
 
 BIONIC_FILE *funopen(const void *cookie, int (*readfn)(void *, char *, int), int (*writefn)(void *, const char *, int), off_t (*seekfn)(void *, off_t, int), int (*closefn)(void *)) SOFTFP;
