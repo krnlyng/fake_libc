@@ -7,6 +7,9 @@ this is an attempt to load android libraries with the gnu ld.so.
 * test_egl
 * test_hwcomposer
 
+## the following sfdroid related tests/hacks work:
+* surfaceflinger loader: loads libsurfaceflinger.so (surfaceflinger.so actually which is just the main function of surfaceflinger) and executes it
+
 ### how to run the tests:
 `export EGL_PLATFORM=hwcomposer # depending on test`
 
