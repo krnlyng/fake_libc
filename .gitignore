@@ -8,4 +8,4 @@ test_egl
 test_hwcomposer
 test_vibrator
 test_sensors
-
+sfdroid_surfaceflinger
