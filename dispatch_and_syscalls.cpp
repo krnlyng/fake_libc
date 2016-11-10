@@ -732,7 +732,7 @@ DUMMY(get_malloc_leak_info);
 //DISPATCH_GLIBC(get_nprocs_conf);
 //DISPATCH_GLIBC(get_phys_pages);
 //DISPATCH_GLIBC(getaddrinfo);
-//DISPATCH_GLIBC(getauxval);
+DISPATCH_GLIBC(getauxval);
 //DISPATCH_GLIBC(getc);
 //DISPATCH_GLIBC(getc_unlocked);
 DISPATCH_GLIBC(getchar);
