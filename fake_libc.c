@@ -8,7 +8,7 @@
 #include <linux/posix_types.h>
 #include <sys/uio.h>
 #include <sys/types.h>
-#include <string.h>
+#include <syscall.h>
 
 #define LM_ID_BASE 0
 #define LM_ID_NEW -1
@@ -48,7 +48,7 @@ enum
 #endif
 };
 
-typedef off_t bionic_fpos_t;
+typedef unsigned long int bionic_fpos_t;
 
 struct __sbuf {
 	unsigned char *_base;
@@ -154,7 +154,7 @@ static int (*glibc___vsprintf_chk)(char * str, int flag, size_t strlen, const ch
 static int (*glibc___vsnprintf_chk)(char* dest, size_t supplied_size, int flags, size_t dest_len_from_compiler, const char* format, ...) = NULL;
 static int (*glibc_vasprintf)(char **strp, const char *fmt, va_list ap) = NULL;
 static int (*glibc_vfprintf)(void *fp, const char *fmt, va_list ap) = NULL;
-static int (*glibc_fprintf)(void *stream, const char *format, ...) = NULL;
+int (*glibc_fprintf)(void *stream, const char *format, ...) = NULL;
 static double (*glibc_ldexp)(double, int) = NULL;
 static int (*glibc_fputs)(const char *s, void *stream) = NULL;
 static int (*glibc_fputc)(int c, void *stream) = NULL;
@@ -225,7 +225,6 @@ static int (*glibc_pthread_attr_setguardsize)(pthread_attr_t *__attr, size_t gua
 static int (*glibc_pthread_attr_getguardsize)(pthread_attr_t const *__attr, size_t *guard_size) = NULL;
 static int (*glibc_pthread_attr_setscope)(pthread_attr_t *__attr, int scope) = NULL;
 static int (*glibc_pthread_attr_getscope)(pthread_attr_t const *__attr, int *scope) = NULL;
-static int (*glibc_pthread_cond_timedwait_relative_np)(pthread_cond_t *cond, pthread_mutex_t *mutex, const struct timespec *reltime) = NULL;
 static int (*glibc_pthread_condattr_init)(pthread_condattr_t *attr) = NULL;
 int (*glibc_readdir_r)(void *dir, void *entry, void **result) = NULL;
 void *(*glibc_readdir)(void *dir) = NULL;
@@ -247,23 +246,27 @@ int (*glibc_getaddrinfo)(const char *hostname, const char *servname,
 int (*glibc_freeaddrinfo)(void *__ai) = NULL;
 
 static int (*glibc_fseek)(void *stream, long offset, int whence) = NULL;
-static int (*glibc_fseeko)(void *stream, off_t offset, int whence) = NULL;
+static int (*glibc_fseeko)(void *stream, unsigned long int offset, int whence) = NULL;
 static long (*glibc_ftell)(void *stream) = NULL;
 static int (*glibc_fileno)(void *stream) = NULL;
 static void (*glibc_rewind)(BIONIC_FILE *stream) = NULL;
-static off_t (*glibc_ftello)(void *stream) = NULL;
-static void *(*glibc_funopen)(const void *cookie, int (*readfn)(void *, char *, int), int (*writefn)(void *, const char *, int), off_t (*seekfn)(void *, off_t, int), int (*closefn)(void *)) = NULL;
+static unsigned long int (*glibc_ftello)(void *stream) = NULL;
+static void *(*glibc_funopen)(const void *cookie, int (*readfn)(void *, char *, int), int (*writefn)(void *, const char *, int), unsigned long int (*seekfn)(void *, unsigned long int, int), int (*closefn)(void *)) = NULL;
 static int (*glibc_fsetpos)(void *stream, const void *pos) = NULL;
 static int (*glibc_fgetpos)(void *stream, void *pos) = NULL;
 
 static int *(*glibc___h_errno_location)(void) = NULL;
 
-static void **glibc_stdin = NULL;
-static void **glibc_stdout = NULL;
-static void **glibc_stderr = NULL;
+static int *(*glibc___errno_location)(void) = NULL;
+
+void **glibc_stdin = NULL;
+void **glibc_stdout = NULL;
+void **glibc_stderr = NULL;
 
 void *(*glibc_dlmopen)(int lmid, const char *filename, int flags) = NULL;
 void *(*glibc_dlsym)(void *handle, const char *symbol) = NULL;
+
+void *(*glibc___tls_get_addr)(void *a) = NULL;
 
 int android_dl_namespace_id = 0;
 
@@ -278,10 +281,11 @@ int android_dl_namespace_id = 0;
     { \
         LOAD_GLIBC(); \
         glibc_ ## f = glibc_dlsym(glibc_handle, #f); \
-    }/* \
-    if(!glibc_fprintf) glibc_fprintf = dlsym(glibc_handle, "fprintf"); \
-    if(!glibc_stderr) glibc_stderr = dlsym(glibc_handle, "stderr"); \
-    glibc_fprintf(*glibc_stderr, "%s is at %p called from %s\n", #f, glibc_ ## f, __FUNCTION__);*/
+        assert(glibc_ ## f); \
+    } \
+    if(!glibc_fprintf) glibc_fprintf = glibc_dlsym(glibc_handle, "fprintf"); \
+    if(!glibc_stderr) glibc_stderr = glibc_dlsym(glibc_handle, "stderr"); \
+    glibc_fprintf(*glibc_stderr, "%s is at %p called from %s\n", #f, glibc_ ## f, __FUNCTION__);
 
 #define LOAD_PTHREAD() \
     if(pthread_handle == NULL) \
@@ -300,10 +304,11 @@ int android_dl_namespace_id = 0;
     { \
         LOAD_RT(); \
         rt_ ## f = glibc_dlsym(rt_handle, #f); \
-    }/* \
-    if(!glibc_fprintf) glibc_fprintf = dlsym(glibc_handle, "fprintf"); \
-    if(!glibc_stderr) glibc_stderr = dlsym(glibc_handle, "stderr"); \
-    glibc_fprintf(*glibc_stderr, "%s is at %p called from %s\n", #f, rt_ ## f, __FUNCTION__);*/
+        assert(rt_ ## f); \
+    } \
+    if(!glibc_fprintf) glibc_fprintf = glibc_dlsym(glibc_handle, "fprintf"); \
+    if(!glibc_stderr) glibc_stderr = glibc_dlsym(glibc_handle, "stderr"); \
+    glibc_fprintf(*glibc_stderr, "%s is at %p called from %s\n", #f, rt_ ## f, __FUNCTION__);
 
 #define LOAD_GCC() \
     if(gcc_handle == NULL) \
@@ -316,10 +321,11 @@ int android_dl_namespace_id = 0;
     { \
         LOAD_GCC(); \
         gcc_ ## f = glibc_dlsym(gcc_handle, #f); \
-    }/* \
-    if(!glibc_fprintf) glibc_fprintf = dlsym(glibc_handle, "fprintf"); \
-    if(!glibc_stderr) glibc_stderr = dlsym(glibc_handle, "stderr"); \
-    glibc_fprintf(*glibc_stderr, "%s is at %p called from %s\n", #f, gcc_ ## f, __FUNCTION__);*/
+        assert(gcc_ ## f); \
+    } \
+    if(!glibc_fprintf) glibc_fprintf = glibc_dlsym(glibc_handle, "fprintf"); \
+    if(!glibc_stderr) glibc_stderr = glibc_dlsym(glibc_handle, "stderr"); \
+    glibc_fprintf(*glibc_stderr, "%s is at %p called from %s\n", #f, gcc_ ## f, __FUNCTION__);
 
 #define LOAD_SETJMP() \
     if(setjmp_handle == NULL) \
@@ -331,10 +337,11 @@ int android_dl_namespace_id = 0;
     { \
         LOAD_SETJMP(); \
         setjmp_ ## f = glibc_dlsym(setjmp_handle, STRINGIFY(my_ ##f); \
-    }/* \
-    if(!glibc_fprintf) glibc_fprintf = dlsym(glibc_handle, "fprintf"); \
-    if(!glibc_stderr) glibc_stderr = dlsym(glibc_handle, "stderr"); \
-    glibc_fprintf(*glibc_stderr, "%s is at %p called from %s\n", #f, setjmp_ ## f, __FUNCTION__);*/
+        assert(setjmp_ ## f); \
+    } \
+    if(!glibc_fprintf) glibc_fprintf = glibc_dlsym(glibc_handle, "fprintf"); \
+    if(!glibc_stderr) glibc_stderr = glibc_dlsym(glibc_handle, "stderr"); \
+    glibc_fprintf(*glibc_stderr, "%s is at %p called from %s\n", #f, setjmp_ ## f, __FUNCTION__);
 
 static void (*init_dlfunctions)(int a_dl_ns_id, void *op, void *sym, void *addr, void *err, void *clo, void *it);
 
@@ -348,10 +355,12 @@ extern BIONIC_FILE __sF[3];
 extern char *__progname;
 
 // provide dlopen and friends for fake libdl.so
-void init_dl(int a_dl_ns_id, void *op, void *sym, void *addr, void *err, void *clo, void *it, char *programname)
+void init_dl(int a_dl_ns_id, void *op, void *sym, void *addr, void *err, void *clo, void *it, char *programname, void *tls)
 {
     glibc_dlmopen = op;
     glibc_dlsym = sym;
+
+    glibc___tls_get_addr = tls;
 
     LOAD_GLIBC();
     LOAD_RT();
@@ -367,6 +376,11 @@ void init_dl(int a_dl_ns_id, void *op, void *sym, void *addr, void *err, void *c
 
     LOAD_GLIBC_SYMBOL(syscall);
     __progname = programname;
+
+
+    // for assert
+    LOAD_GLIBC_SYMBOL(fprintf);
+    LOAD_GLIBC_SYMBOL(stderr);
 }
 
 static void *_get_actual_fp(BIONIC_FILE *fp)
@@ -753,7 +767,8 @@ int pthread_mutex_unlock(void *__mutex)
 
 long __set_errno_internal(int e)
 {
-    errno = e;
+    LOAD_GLIBC_SYMBOL(__errno_location);
+    (*glibc___errno_location()) = e;
     return -1;
 }
 
@@ -761,13 +776,16 @@ void *my_start_routine(void *con)
 {
     void **container = con;
     void *(*start_routine)(void *) = container[0];
+    void *arg = container[1];
 
     pthread_t thread = pthread_self();
-    pid_t pid = gettid();
+    pid_t pid = glibc_syscall(__NR_gettid);
 
     my_settid_to_thread(thread, pid);
 
-    start_routine(container[1]);
+    container[2] = 0;    
+
+    start_routine(arg);
 
     my_remtid(thread);
 }
@@ -784,11 +802,16 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attr, void *(*start_
     if (attr != NULL)
             realattr = (pthread_attr_t *) *(unsigned int *) attr;
 
-    void *container[2];
+    // we need to keep container until it has been processed
+    // therefore the crazy locking and waiting
+    volatile void * volatile container[3];
     container[0] = start_routine;
     container[1] = arg;
+    container[2] = 1;
 
     int ret = rt_pthread_create(thread, realattr, my_start_routine, &container);
+    while(container[2] == 1){}
+
     return ret;
 }
 
@@ -863,7 +886,7 @@ int pthread_cond_timedwait_relative_np(pthread_cond_t *cond,
     unsigned int cvalue = (*(unsigned int *) cond);
     unsigned int mvalue = (*(unsigned int *) mutex);
 
-    LOAD_GLIBC_SYMBOL(pthread_cond_timedwait_relative_np);
+    LOAD_GLIBC_SYMBOL(pthread_cond_timedwait);
 
     pthread_cond_t *realcond = (pthread_cond_t *) cvalue;
 
@@ -1054,7 +1077,7 @@ int sscanf(const char *str, const char *format, ...) SOFTFP;
 
 int sscanf(const char *str, const char *format, ...)
 {
-    LOAD_GLIBC_SYMBOL(sscanf);
+    LOAD_GLIBC_SYMBOL(vsscanf);
 
     int ret = 0;
 
@@ -1959,6 +1982,7 @@ int __system_property_get(const char *name, char *value)
     LOAD_GLIBC_SYMBOL(fclose);
     LOAD_GLIBC_SYMBOL(getline);
     LOAD_GLIBC_SYMBOL(feof);
+    LOAD_GLIBC_SYMBOL(stderr);
     
     glibc_fprintf(*glibc_stderr, "__system_property_get(%s)\n", name);
 
@@ -2101,6 +2125,9 @@ void __assert2(const char* file, int line, const char* function, const char* fai
 pid_t pthread_gettid_np(pthread_t t) SOFTFP;
 pid_t pthread_gettid_np(pthread_t t)
 {
+    LOAD_GLIBC_SYMBOL(pthread_mutex_lock);
+    LOAD_GLIBC_SYMBOL(pthread_mutex_unlock);
+
     return my_gettid_from_thread(t);
 }
 
@@ -2211,6 +2238,11 @@ int __FD_ISSET_chk(int a, fd_set *b)
     return FD_ISSET(a, b);
 }
 
+// this is only for ourselfes, not for android
+void *__tls_get_addr(void *a)
+{
+    return glibc___tls_get_addr(a);
+}
 
 static __thread void *tls_hooks[16];
 
@@ -2247,8 +2279,8 @@ int fseek(BIONIC_FILE *stream, long offset, int whence)
     return glibc_fseek(_get_actual_fp(stream), offset, whence);
 }
 
-int fseeko(BIONIC_FILE *stream, off_t offset, int whence) SOFTFP;
-int fseeko(BIONIC_FILE *stream, off_t offset, int whence)
+int fseeko(BIONIC_FILE *stream, unsigned long int offset, int whence) SOFTFP;
+int fseeko(BIONIC_FILE *stream, unsigned long int offset, int whence)
 {
     LOAD_GLIBC_SYMBOL(fseeko);
 
@@ -2279,8 +2311,8 @@ void rewind(BIONIC_FILE *stream)
     return glibc_rewind(stream);
 }
 
-off_t ftello(BIONIC_FILE *stream) SOFTFP;
-off_t ftello(BIONIC_FILE *stream)
+unsigned long int ftello(BIONIC_FILE *stream) SOFTFP;
+unsigned long int ftello(BIONIC_FILE *stream)
 {
     LOAD_GLIBC_SYMBOL(ftello);
 
@@ -2370,8 +2402,8 @@ int __isinff(float f)
     return isinf(f);
 }
 
-BIONIC_FILE *funopen(const void *cookie, int (*readfn)(void *, char *, int), int (*writefn)(void *, const char *, int), off_t (*seekfn)(void *, off_t, int), int (*closefn)(void *)) SOFTFP;
-BIONIC_FILE *funopen(const void *cookie, int (*readfn)(void *, char *, int), int (*writefn)(void *, const char *, int), off_t (*seekfn)(void *, off_t, int), int (*closefn)(void *))
+BIONIC_FILE *funopen(const void *cookie, int (*readfn)(void *, char *, int), int (*writefn)(void *, const char *, int), unsigned long int (*seekfn)(void *, unsigned long int, int), int (*closefn)(void *)) SOFTFP;
+BIONIC_FILE *funopen(const void *cookie, int (*readfn)(void *, char *, int), int (*writefn)(void *, const char *, int), unsigned long int (*seekfn)(void *, unsigned long int, int), int (*closefn)(void *))
 {
     LOAD_GLIBC_SYMBOL(funopen);
 
@@ -2393,5 +2425,12 @@ int fsetpos(BIONIC_FILE *stream, const void *pos)
     LOAD_GLIBC_SYMBOL(fsetpos);
 
     return fsetpos(_get_actual_fp(stream), pos);
+}
+
+int feof(void *stream)
+{
+    LOAD_GLIBC_SYMBOL(feof);
+
+    return glibc_feof(stream);
 }
 

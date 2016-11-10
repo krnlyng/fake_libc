@@ -1,12 +1,11 @@
 #include "helpers.h"
-#include <string.h>
 #include <fcntl.h>
 #include <dlfcn.h>
 
 extern "C" {
 
-extern int fprintf(void *, const char *, ...);
-extern void *stderr;
+extern int (*glibc_fprintf)(void *, const char *, ...);
+extern void **glibc_stderr;
 extern void abort(void);
 
 extern long (*glibc_syscall)(long int request, ...);
@@ -23,11 +22,6 @@ extern void *(*glibc_dlsym)(void *handle, const char *name);
 void *my_dlsym(void *handle, const char *name)
 {
     return glibc_dlsym(handle, name);
-}
-
-void assert(void* b)
-{
-    if(!b) abort();
 }
 
 #define DISPATCH_GLIBC(f) \
@@ -90,7 +84,7 @@ extern void init_setjmp();
 #define DUMMY(f) \
     void f(void) \
     { \
-        fprintf(stderr, "called a dummy function: %s\n", #f); \
+        glibc_fprintf(*glibc_stderr, "called a dummy function: %s\n", #f); \
     }
 /*
 
@@ -376,8 +370,8 @@ DISPATCH_GLIBC(__open_2);
 //DISPATCH_GLIBC(__page_shift);
 //DISPATCH_GLIBC(__page_size);
 //DISPATCH_GLIBC(__poll_chk);
-//DISPATCH_GLIBC(__popcount_tab);
-//DISPATCH_GLIBC(__popcountsi2);
+DUMMY(__popcount_tab);
+DUMMY(__popcountsi2);
 //DISPATCH_GLIBC(__ppoll);
 //DISPATCH_GLIBC(__ppoll_chk);
 //DISPATCH_GLIBC(__pread64_chk);
@@ -1278,7 +1272,7 @@ DISPATCH_GLIBC(setusershell);
 DISPATCH_GLIBC(setutent);
 DISPATCH_GLIBC(setvbuf);
 DISPATCH_GLIBC(setxattr);
-DISPATCH_SETJMP(shutdown);
+DISPATCH_GLIBC(shutdown);
 DISPATCH_SETJMP(sigaction);
 DISPATCH_SETJMP(sigaddset);
 DISPATCH_SETJMP(sigaltstack);
@@ -1439,7 +1433,7 @@ DISPATCH_GLIBC(towupper_l);
 //DISPATCH_GLIBC(ttyname);
 //DISPATCH_GLIBC(ttyname_r);
 //DISPATCH_GLIBC(twalk);
-//DISPATCH_GLIBC(tzname);
+DISPATCH_GLIBC(tzname);
 DISPATCH_GLIBC(tzset);
 DISPATCH_GLIBC(umask);
 //DISPATCH_GLIBC(umount);
@@ -1601,7 +1595,7 @@ int __rt_sigprocmask(int a, const void *b, void *c, size_t d)
 
 int __rt_sigtimedwait(const void* uthese, void* uinfo, const struct timespec* uts, size_t sigsetsize)
 {
-   return glibc_syscall(__NR_rt_sigtimedwait, uthese, uinfo, uts, sigsetsize);
+    return glibc_syscall(__NR_rt_sigtimedwait, uthese, uinfo, uts, sigsetsize);
 }
 
 int __rt_sigpending(const void* a, size_t b)
@@ -1619,7 +1613,7 @@ int fcntl64(int a, int b, void *c)
     return glibc_syscall(__NR_fcntl64, a, b, c);
 }
 
-int gettid(void)
+pid_t gettid(void)
 {
     return glibc_syscall(__NR_gettid);
 }

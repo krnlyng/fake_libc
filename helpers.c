@@ -11,7 +11,23 @@
 
 #include "helpers.h"
 
-extern int (*glibc_readdir_r)(void *dir, struct dirent *entry, struct dirent **result);
+// we're linking against musl...
+
+struct glibc_dirent                                                                   
+  {                                                                             
+#ifndef __USE_FILE_OFFSET64                                                     
+    unsigned long int d_ino;                                                              
+    unsigned long int d_off;                                                              
+#else                                                                           
+    ino64_t d_ino;                                                            
+    off64_t d_off;                                                            
+#endif                                                                          
+    unsigned short int d_reclen;                                                
+    unsigned char d_type;                                                       
+    char d_name[256];       /* We must not include limits.h! */                 
+  }; 
+
+extern int (*glibc_readdir_r)(void *dir, struct glibc_dirent *entry, struct glibc_dirent **result);
 extern void *(*glibc_readdir)(void *dir);
 
 struct bionic_dirent {
@@ -25,8 +41,8 @@ struct bionic_dirent {
 int my_readdir_r(DIR *dir, struct bionic_dirent *entry,
         struct bionic_dirent **result)
 {
-    struct dirent entry_r;
-    struct dirent *result_r;
+    struct glibc_dirent entry_r;
+    struct glibc_dirent *result_r;
 
     int res = glibc_readdir_r(dir, &entry_r, &result_r);
 
@@ -68,7 +84,7 @@ struct bionic_dirent *my_readdir(DIR *dirp)
 
     static struct bionic_dirent result;
 
-    struct dirent *real_result = glibc_readdir(dirp);
+    struct glibc_dirent *real_result = glibc_readdir(dirp);
     if (!real_result) {
         return NULL;
     }

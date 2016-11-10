@@ -4,7 +4,7 @@ SRC         := fake_libc.c \
 				strlcat.c \
 				helpers.c \
 				dispatch_and_syscalls.cpp \
-				cpphelpers.cpp
+				pthread_gettid_helpers.cpp
 
 OBJ         := $(patsubst %.c, %.o, $(filter %.c, $(SRC)))
 OBJ         += $(patsubst %.cpp, %.o, $(filter %.cpp, $(SRC)))
@@ -13,8 +13,8 @@ DEP         := $(OBJ:.o=.d)
 
 CFLAGS      := -Wall -std=c99 -mhard-float -fPIC -marm -nostdinc -I/usr/local/musl/include
 CXXFLAGS    := -Wall -Werror -std=c++0x -mhard-float -fPIC -marm -nostdinc -I/usr/local/musl/include
-LDFLAGS     := -Wl,-no-undefined -static -shared -Wl,--version-script=libc.map -nostdlib -static-libstdc++ -static-libgcc
-LDLIBS      := -l:/usr/local/musl/lib/libc.a -l:/usr/local/musl/lib/libdl.a
+LDFLAGS     := -Wl,-no-undefined -static -shared -Wl,--version-script=libc.map -nostdlib
+LDLIBS      := 
 
 DEBUG       ?= 0
 VERBOSE     ?= 0
@@ -48,6 +48,7 @@ $(OUT): $(OBJ)
 	$(CMD)$(CC) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 	@echo "WARNING: Removing hardfp abi tag (not warning about the fact, warning about the method)"
 	$(CMD)sed -i "0,/\x02\x04\x00\x05/ s/\x02\x04\x00\x05/\x00\x00\x00\x05/" $(OUT)
+	$(CMD)strip $(OUT)
 
 %.o: %.s
 	$(MSG) -e "\tAS\t$@"
