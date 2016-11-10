@@ -276,6 +276,15 @@ int android_dl_namespace_id = 0;
         glibc_handle = glibc_dlmopen(LM_ID_BASE, "/lib/libc.so.6", RTLD_LAZY); \
     }
 
+#ifdef DEBUG
+#define SHOW_FUNCTION(f, ptr) \
+    if(!glibc_fprintf) glibc_fprintf = glibc_dlsym(glibc_handle, "fprintf"); \
+    if(!glibc_stderr) glibc_stderr = glibc_dlsym(glibc_handle, "stderr"); \
+    glibc_fprintf(*glibc_stderr, "%s is at %p called from %s\n", #f, ptr, __FUNCTION__);
+#else
+#define SHOW_FUNCTION(...)
+#endif
+
 #define LOAD_GLIBC_SYMBOL(f) \
     if(glibc_ ## f == NULL) \
     { \
@@ -283,9 +292,7 @@ int android_dl_namespace_id = 0;
         glibc_ ## f = glibc_dlsym(glibc_handle, #f); \
         assert(glibc_ ## f); \
     } \
-    if(!glibc_fprintf) glibc_fprintf = glibc_dlsym(glibc_handle, "fprintf"); \
-    if(!glibc_stderr) glibc_stderr = glibc_dlsym(glibc_handle, "stderr"); \
-    glibc_fprintf(*glibc_stderr, "%s is at %p called from %s\n", #f, glibc_ ## f, __FUNCTION__);
+    SHOW_FUNCTION(f, glibc_ ## f)
 
 #define LOAD_PTHREAD() \
     if(pthread_handle == NULL) \
@@ -306,9 +313,7 @@ int android_dl_namespace_id = 0;
         rt_ ## f = glibc_dlsym(rt_handle, #f); \
         assert(rt_ ## f); \
     } \
-    if(!glibc_fprintf) glibc_fprintf = glibc_dlsym(glibc_handle, "fprintf"); \
-    if(!glibc_stderr) glibc_stderr = glibc_dlsym(glibc_handle, "stderr"); \
-    glibc_fprintf(*glibc_stderr, "%s is at %p called from %s\n", #f, rt_ ## f, __FUNCTION__);
+    SHOW_FUNCTION(f, rt_ ## f)
 
 #define LOAD_GCC() \
     if(gcc_handle == NULL) \
@@ -323,9 +328,7 @@ int android_dl_namespace_id = 0;
         gcc_ ## f = glibc_dlsym(gcc_handle, #f); \
         assert(gcc_ ## f); \
     } \
-    if(!glibc_fprintf) glibc_fprintf = glibc_dlsym(glibc_handle, "fprintf"); \
-    if(!glibc_stderr) glibc_stderr = glibc_dlsym(glibc_handle, "stderr"); \
-    glibc_fprintf(*glibc_stderr, "%s is at %p called from %s\n", #f, gcc_ ## f, __FUNCTION__);
+    SHOW_FUNCTION(f, gcc_ ## f)
 
 #define LOAD_SETJMP() \
     if(setjmp_handle == NULL) \
@@ -339,9 +342,7 @@ int android_dl_namespace_id = 0;
         setjmp_ ## f = glibc_dlsym(setjmp_handle, STRINGIFY(my_ ##f); \
         assert(setjmp_ ## f); \
     } \
-    if(!glibc_fprintf) glibc_fprintf = glibc_dlsym(glibc_handle, "fprintf"); \
-    if(!glibc_stderr) glibc_stderr = glibc_dlsym(glibc_handle, "stderr"); \
-    glibc_fprintf(*glibc_stderr, "%s is at %p called from %s\n", #f, setjmp_ ## f, __FUNCTION__);
+    SHOW_FUNCTION(f, setjmp_ ## f)
 
 static void (*init_dlfunctions)(int a_dl_ns_id, void *op, void *sym, void *addr, void *err, void *clo, void *it);
 
@@ -1984,7 +1985,9 @@ int __system_property_get(const char *name, char *value)
     LOAD_GLIBC_SYMBOL(feof);
     LOAD_GLIBC_SYMBOL(stderr);
     
+#if DEBUG
     glibc_fprintf(*glibc_stderr, "__system_property_get(%s)\n", name);
+#endif
 
     void *fp = glibc_fopen("/system/build.prop", "r");
 
