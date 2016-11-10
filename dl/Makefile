@@ -15,9 +15,9 @@ DEBUG       ?= 0
 VERBOSE     ?= 0
 
 ifeq ($(DEBUG),1)
-	CFLAGS += -O0 -g3 -ggdb -pg -DDEBUG=1
-	CXXFLAGS += -O0 -g3 -ggdb -pg -DDEBUG=1
-	LDFLAGS += -pg
+	CFLAGS += -O0 -g3 -ggdb -DDEBUG=1
+	CXXFLAGS += -O0 -g3 -ggdb -DDEBUG=1
+	LDFLAGS +=
 endif
 
 ifeq ($(VERBOSE),1)
