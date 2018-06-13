@@ -1,6 +1,9 @@
 # WHAT IS THIS?
 this is an attempt to load android libraries with the gnu ld.so.
 
+# BTW
+``just slipping something in, since it seems to be unmentioned: It is certainly possible to have UI running with this method, i managed to do so. But since this project requires custom patches on top of glibc i didn't think it was worth pursuing.``
+
 ## the following tests from libhybris have been compiled against this and work:
 * test_vibrator
 * test_sensors
